@@ -65,28 +65,10 @@ def setup_database():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
 
+    with open("create_trades_table.txt", "r", encoding="utf-8") as f:
+        sql_template = f.read()
     # 거래 기록 테이블
-    cursor.execute(f'''
-    CREATE TABLE IF NOT EXISTS trades (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp TEXT NOT NULL,           -- 거래 시작 시간
-        action TEXT NOT NULL,              -- long 또는 short
-        entry_price REAL NOT NULL,         -- 진입 가격
-        amount REAL NOT NULL,              -- 거래량 ({_coinName})
-        leverage INTEGER NOT NULL,         -- 레버리지 배수
-        sl_price REAL NOT NULL,            -- 스탑로스 가격
-        tp_price REAL NOT NULL,            -- 테이크프로핏 가격
-        sl_percentage REAL NOT NULL,       -- 스탑로스 백분율
-        tp_percentage REAL NOT NULL,       -- 테이크프로핏 백분율
-        position_size_percentage REAL NOT NULL,  -- 자본 대비 포지션 크기
-        investment_amount REAL NOT NULL,   -- 투자 금액 (USDT)
-        status TEXT DEFAULT 'OPEN',        -- 거래 상태 (OPEN/CLOSED)
-        exit_price REAL,                   -- 청산 가격
-        exit_timestamp TEXT,               -- 청산 시간
-        profit_loss REAL,                  -- 손익 (USDT)
-        profit_loss_percentage REAL        -- 손익 백분율
-    )
-    ''')
+    cursor.execute(sql_template)
 
     # AI 분석 결과 테이블
     cursor.execute('''

@@ -10,9 +10,9 @@ import math
 # _openai_model_name = "gpt-4o"
 _openai_model_name = "gpt-3.5-turbo"
 
-_min_order_usdt = 7  # 최소 주문 금액 (예: 7 USDT)
-
-_reverage = 1
+_symbol = "BTC/USDT"        # 거래할 심볼
+_min_order_usdt = 7         # 최소 주문 금액 (예: 7 USDT)
+_reverage = 1               # 레버리지 배율
 
 # 포지션별 손절/익절 비율 설정 (단위: 0.01, 즉 0.5 -> 0.5%)
 _long_stop_loss_rate = 1.0
@@ -36,10 +36,9 @@ exchange = ccxt.binance({
         'adjustForTimeDifference': True
     }
 })
-symbol = "BTC/USDT"
 
 # 2. 차트 데이터 가져오기 (15분봉 최근 24시간)
-ohlcv = exchange.fetch_ohlcv("BTC/USDT", timeframe="15m", limit=96)
+ohlcv = exchange.fetch_ohlcv(_symbol, timeframe="15m", limit=96)
 df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
 df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
 
@@ -63,17 +62,17 @@ action = response.choices[0].message.content.lower().strip()
 print("AI Action:", action)
 
 # 4. 최소 주문금액(_min_order_usdt USDT 이상) 만족하는 주문 수량 계산
-current_price = exchange.fetch_ticker(symbol)['last']
+current_price = exchange.fetch_ticker(_symbol)['last']
 # 100 USDT 이상 주문하도록 수량 산출 (소수점 3자리 반올림)
 amount = math.ceil((_min_order_usdt / current_price) * 1000) / 1000
 print("Order Amount:", amount)
 
 # 5. 레버리지 _REVERAGE배 설정
-exchange.set_leverage(_reverage, symbol)
+exchange.set_leverage(_reverage, _symbol)
 
 if action == "long":
     # 롱 포지션 진입 (시장가 매수)
-    order = exchange.create_market_buy_order(symbol, amount)
+    order = exchange.create_market_buy_order(_symbol, amount)
     print("Long order executed:", order)
     entry_price = current_price  # 진입가: 현재 가격 사용
 
@@ -83,7 +82,7 @@ if action == "long":
 
     # Stop Loss 주문 (롱 포지션 청산을 위한 STOP_MARKET 매도 주문)
     sl_order = exchange.create_order(
-        symbol=symbol,
+        symbol=_symbol,
         type='STOP_MARKET',
         side='sell',
         amount=amount,
@@ -92,7 +91,7 @@ if action == "long":
     )
     # Take Profit 주문 (롱 포지션 청산을 위한 TAKE_PROFIT_MARKET 매도 주문)
     tp_order = exchange.create_order(
-        symbol=symbol,
+        symbol=_symbol,
         type='TAKE_PROFIT_MARKET',
         side='sell',
         amount=amount,
@@ -104,7 +103,7 @@ if action == "long":
 
 elif action == "short":
     # 숏 포지션 진입 (시장가 매도)
-    order = exchange.create_market_sell_order(symbol, amount)
+    order = exchange.create_market_sell_order(_symbol, amount)
     print("Short order executed:", order)
     entry_price = current_price
 
@@ -114,7 +113,7 @@ elif action == "short":
 
     # Stop Loss 주문 (숏 포지션 청산을 위한 STOP_MARKET 매수 주문)
     sl_order = exchange.create_order(
-        symbol=symbol,
+        symbol=_symbol,
         type='STOP_MARKET',
         side='buy',
         amount=amount,
@@ -123,7 +122,7 @@ elif action == "short":
     )
     # Take Profit 주문 (숏 포지션 청산을 위한 TAKE_PROFIT_MARKET 매수 주문)
     tp_order = exchange.create_order(
-        symbol=symbol,
+        symbol=_symbol,
         type='TAKE_PROFIT_MARKET',
         side='buy',
         amount=amount,

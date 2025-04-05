@@ -1,54 +1,61 @@
 import ccxt
+import os
+from dotenv import load_dotenv
 import pandas as pd
 from openai import OpenAI
-from dotenv import load_dotenv
-import os
+import math
 
-load_dotenv("buffett-config/.env")
+load_dotenv()
+_openai_model_name = "gpt-3.5-turbo"
 
-# binance 로 초기화
+# 바이낸스 세팅
+api_key = os.getenv("BINANCE_API_KEY")
+secret = os.getenv("BINANCE_SECRET_KEY")
 exchange = ccxt.binance({
+    'apiKey': api_key,
+    'secret': secret,
+    'enableRateLimit': True,
     'options': {
-        'defaultType': 'future' # 선물
+        'defaultType': 'future',
+        'adjustForTimeDifference': True
     }
 })
 
 # 차트 데이터 가져오기
-symbol = 'BTC/USDT'
-ohlcv = exchange.fetch_ohlcv(symbol, '15m', limit=96)
+ohlcv = exchange.fetch_ohlcv("BTC/USDT", timeframe="15m", limit=96)
 df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
 df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
 
-
+# AI 투자 판단 받기
 client = OpenAI()
-
 response = client.chat.completions.create(
-  model="gpt-3.5-turbo",
-  messages=[
-    {
-      "role": "system",
-      "content": [
+    model=_openai_model_name,
+    messages=[
         {
-          "type": "text",
-          "text": "you are a cryptocurrency trading expert. Analyze the market data and respond with 'Long' or 'Short'. Do not use any other characters except long or short"
-        }
-      ]
-    },
-    {
-      "role": "user",
-      "content": [
+            "role": "system",
+            "content": "You are a crypto trading expert. Analyze the market data and respond with only 'long' or 'short'."
+        },
         {
-          "type": "text",
-          "text": df.to_json()
+            "role": "user",
+            "content": df.to_json()
         }
-      ]
-    }
-  ],
-  response_format={
-    "type": "text"
-  }
+    ]
 )
+action = response.choices[0].message.content.lower()
+print(action)
 
-final_result = response.choices[0].message.content
+# 100 USDT 가치의 비트코인 수량 계산
+current_price = exchange.fetch_ticker("BTC/USDT")['last']
+amount = math.ceil((100 / current_price) * 1000) / 1000
+print(amount)
 
-print(final_result)
+# Long / Short 레버리지 5배 실행
+exchange.set_leverage(5, "BTC/USDT")
+
+# AI 판단에 따른 포지션 진입
+if action == "long":
+    order = exchange.create_market_buy_order("BTC/USDT", amount)
+    print(order)
+elif action == "short":
+    order = exchange.create_market_sell_order("BTC/USDT", amount)
+    print(order)

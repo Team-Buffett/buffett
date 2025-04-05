@@ -20,9 +20,11 @@ import requests  # HTTP 요청
 import json  # JSON 데이터 처리
 import sqlite3  # 로컬 데이터베이스
 from dotenv import load_dotenv  # 환경 변수 로드
-load_dotenv()  # .env 파일에서 환경 변수 로드
 from openai import OpenAI  # OpenAI API 접근
 from datetime import datetime  # 날짜 및 시간 처리
+
+
+load_dotenv("buffett-config/.env")
 
 # ===== 설정 및 초기화 =====
 # 바이낸스 API 설정
@@ -37,7 +39,7 @@ exchange = ccxt.binance({
         'adjustForTimeDifference': True  # 시간대 차이 조정
     }
 })
-symbol = "BTC/USDT"  # 거래 페어 설정
+symbol = "XRP/USDT"  # 거래 페어 설정
 
 # OpenAI API 클라이언트 초기화
 client = OpenAI()
@@ -46,7 +48,7 @@ client = OpenAI()
 serp_api_key = os.getenv("SERP_API_KEY")  # 서프 API 키
 
 # SQLite 데이터베이스 설정
-DB_FILE = "bitcoin_trading.db"  # 데이터베이스 파일명
+DB_FILE = "XRP_trading.db"  # 데이터베이스 파일명
 
 # ===== 데이터베이스 관련 함수 =====
 def setup_database():
@@ -67,7 +69,7 @@ def setup_database():
         timestamp TEXT NOT NULL,           -- 거래 시작 시간
         action TEXT NOT NULL,              -- long 또는 short
         entry_price REAL NOT NULL,         -- 진입 가격
-        amount REAL NOT NULL,              -- 거래량 (BTC)
+        amount REAL NOT NULL,              -- 거래량 (XRP)
         leverage INTEGER NOT NULL,         -- 레버리지 배수
         sl_price REAL NOT NULL,            -- 스탑로스 가격
         tp_price REAL NOT NULL,            -- 테이크프로핏 가격
@@ -511,53 +513,6 @@ def fetch_multi_timeframe_data():
             print(f"Error fetching {tf_name} data: {e}")
 
     return multi_tf_data
-
-def fetch_bitcoin_news():
-    """
-    비트코인 관련 최신 뉴스를 가져옵니다
-
-    SERP API를 사용해 Google 뉴스에서 비트코인 관련 최신 뉴스 10개를 가져옵니다.
-
-    반환값:
-        list: 최신 뉴스 기사 정보 (제목과 날짜만 포함)
-    """
-    try:
-        # SERP API 요청 설정
-        url = "https://serpapi.com/search.json"
-        params = {
-            "engine": "google_news",  # Google 뉴스 검색
-            "q": "bitcoin",           # 검색어: 비트코인
-            "gl": "us",               # 국가: 미국
-            "hl": "en",               # 언어: 영어
-            "api_key": serp_api_key   # API 키
-        }
-
-        # API 요청 보내기
-        response = requests.get(url, params=params)
-
-        # 응답 확인 및 처리
-        if response.status_code == 200:
-            data = response.json()
-            news_results = data.get("news_results", [])
-
-            # 최신 뉴스 10개만 추출하고 제목과 날짜만 포함
-            recent_news = []
-            for i, news in enumerate(news_results[:10]):
-                news_item = {
-                    "title": news.get("title", ""),
-                    "date": news.get("date", "")
-                }
-                recent_news.append(news_item)
-
-            print(f"Collected {len(recent_news)} recent news articles (title and date only)")
-            return recent_news
-        else:
-            print(f"Error fetching news: Status code {response.status_code}")
-            return []
-    except Exception as e:
-        print(f"Error fetching news: {e}")
-        return []
-
 # ===== 포지션 관리 함수 =====
 def handle_position_closure(current_price, side, amount, current_trade_id=None):
     """
@@ -629,7 +584,6 @@ print("Trading Pair:", symbol)
 print("Dynamic Leverage: AI Optimized")
 print("Dynamic SL/TP: AI Optimized")
 print("Multi Timeframe Analysis: 15m, 1h, 4h")
-print("News Sentiment Analysis: Enabled")
 print("Historical Performance Learning: Enabled")
 print("Database Logging: Enabled")
 print("===================================\n")
@@ -643,7 +597,7 @@ while True:
         # 현재 시간 및 가격 조회
         current_time = datetime.now().strftime('%H:%M:%S')
         current_price = exchange.fetch_ticker(symbol)['last']
-        print(f"\n[{current_time}] Current BTC Price: ${current_price:,.2f}")
+        print(f"\n[{current_time}] Current XRP Price: ${current_price:,.2f}")
 
         # ===== 1. 현재 포지션 확인 =====
         current_side = None  # 현재 포지션 방향 (long/short/None)
@@ -652,7 +606,7 @@ while True:
         # 바이낸스에서 현재 포지션 조회
         positions = exchange.fetch_positions([symbol])
         for position in positions:
-            if position['symbol'] == 'BTC/USDT:USDT':
+            if position['symbol'] == 'XRP/USDT:USDT':
                 amt = float(position['info']['positionAmt'])
                 if amt > 0:
                     current_side = 'long'
@@ -667,7 +621,7 @@ while True:
 
         # ===== 2. 포지션이 있는 경우 처리 =====
         if current_side:
-            print(f"Current Position: {current_side.upper()} {amount} BTC")
+            print(f"Current Position: {current_side.upper()} {amount} XRP")
 
             # 포지션이 있지만 DB에 기록이 없는 경우 (프로그램 재시작 등)
             if not current_trade:
@@ -676,7 +630,7 @@ while True:
                     'action': current_side,
                     'entry_price': current_price,  # 현재 가격으로 임시 설정
                     'amount': amount,
-                    'leverage': 1,  # 기본값
+                    'leverage': 2,  # 기본값
                     'sl_price': 0,
                     'tp_price': 0,
                     'sl_percentage': 0,
@@ -713,8 +667,6 @@ while True:
             # 멀티 타임프레임 차트 데이터 수집
             multi_tf_data = fetch_multi_timeframe_data()
 
-            # 최신 비트코인 뉴스 수집
-            recent_news = fetch_bitcoin_news()
 
             # 과거 거래 내역 및 AI 분석 결과 가져오기
             historical_trading_data = get_historical_trading_data(limit=10)  # 최근 10개 거래
@@ -727,7 +679,6 @@ while True:
                 "timestamp": datetime.now().isoformat(),
                 "current_price": current_price,
                 "timeframes": {},
-                "recent_news": recent_news,
                 "historical_trading_data": historical_trading_data,
                 "performance_metrics": performance_metrics
             }
@@ -739,13 +690,13 @@ while True:
             # ===== 6. AI 트레이딩 결정 요청 =====
             # AI 분석을 위한 시스템 프롬프트 설정
             system_prompt = """
-You are a crypto trading expert specializing in multi-timeframe analysis and news sentiment analysis applying Kelly criterion to determine optimal position sizing, leverage, and risk management.
+You are a crypto trading expert specializing in multi-timeframe analysis and analysis applying Kelly criterion to determine optimal position sizing, leverage, and risk management.
 You adhere strictly to Warren Buffett's investment principles:
 
 **Rule No.1: Never lose money.**
 **Rule No.2: Never forget rule No.1.**
 
-Analyze the market data across different timeframes (15m, 1h, 4h), recent news headlines, and historical trading performance to provide your trading decision.
+Analyze the market data across different timeframes (15m, 1h, 4h) and historical trading performance to provide your trading decision.
 
 Follow this process:
 1. Review historical trading performance:
@@ -763,7 +714,6 @@ Follow this process:
    - Long-term trend (4h): Overall market bias
    - Volatility across timeframes
    - Key support/resistance levels
-   - News sentiment: Analyze recent news article titles for bullish or bearish sentiment
 
 3. Based on your analysis, determine:
    - Direction: Whether to go LONG or SHORT
@@ -824,7 +774,7 @@ IMPORTANT: Do not format your response as a code block. Do not include ```json, 
 
             # OpenAI API 호출하여 트레이딩 결정 요청
             response = client.chat.completions.create(
-                model="gpt-4o",  # GPT-4o 모델 사용
+                model="gpt-4o-mini",  # GPT-4o 모델 사용
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": str(market_analysis)}
@@ -893,16 +843,20 @@ IMPORTANT: Do not format your response as a code block. Do not include ```json, 
                 investment_amount = available_capital * position_size_percentage
 
                 # 최소 주문 금액 확인 (최소 100 USDT)
-                if investment_amount < 100:
-                    investment_amount = 100
+                if investment_amount < 6:
+                    investment_amount = 6
                     print(f"최소 주문 금액(100 USDT)으로 조정됨")
+                if investment_amount >= 10:
+                    investment_amount = 10
+                    print(f"최소 주문 금액: {investment_amount}로 낮춤")
+                
 
                 print(f"투자 금액: {investment_amount:.2f} USDT")
 
                 # ===== 10. 주문 수량 계산 =====
-                # BTC 수량 = 투자금액 / 현재가격, 소수점 3자리까지 반올림
+                # XRP 수량 = 투자금액 / 현재가격, 소수점 3자리까지 반올림
                 amount = math.ceil((investment_amount / current_price) * 1000) / 1000
-                print(f"주문 수량: {amount} BTC")
+                print(f"주문 수량: {amount} XRP")
 
                 # ===== 11. 레버리지 설정 =====
                 # AI 추천 레버리지 설정

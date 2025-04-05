@@ -1,9 +1,9 @@
-from dotenv import load_dotenv
 import os
+from dotenv import load_dotenv
 
 load_dotenv("buffett-config/.env")
 
-openai_api_key = os.getenv("OPANAI_API_KEY")
+openai_api_key = os.getenv("OPENAI_API_KEY")
 api_key = os.getenv("BINANCE_API_KEY")
 secret_key = os.getenv("BINANCE_SECRET_KEY")
 

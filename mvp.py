@@ -1,10 +1,26 @@
 import ccxt
 import os
 from dotenv import load_dotenv
-load_dotenv()
 import pandas as pd
 from openai import OpenAI
 import math
+
+### 수정 가능한 변수 ###
+
+_reverage = 1
+
+# 포지션별 손절/익절 비율 설정 (단위: 0.01, 즉 0.5 -> 0.5%)
+# 롱 포지션 (진입 후 손절: 진입가의 _long_stop_loss_rate% 하락, 익절: _long_take_profit_rate% 상승)
+_long_stop_loss_rate = 1.0      # 롱 포지션 손절 비율 (% 단위)
+_long_take_profit_rate = 1.0    # 롱 포지션 익절 비율
+
+# 숏 포지션 (진입 후 손절: 진입가의 _short_stop_loss_rate% 상승, 익절: _short_take_profit_rate% 하락)
+_short_stop_loss_rate = 1.0     # 숏 포지션 손절 비율
+_short_take_profit_rate = 1.0   # 숏 포지션 익절 비율
+
+### 수정 가능한 변수 종료 ###
+
+load_dotenv()
 
 # 바이낸스 세팅
 api_key = os.getenv("BINANCE_API_KEY")
@@ -50,18 +66,18 @@ current_price = exchange.fetch_ticker(symbol)['last']
 amount = math.ceil((100 / current_price) * 1000) / 1000
 print("Order Amount:", amount)
 
-# 5. 레버리지 5배 설정
-exchange.set_leverage(5, symbol)
+# 5. 레버리지 _REVERAGE배 설정
+exchange.set_leverage(_reverage, symbol)
 
-# 6. 진입 주문 후 Stop Loss / Take Profit 주문 지정 - 진입 가격 기준으로 ±0.5% 설정
 if action == "long":
     # 롱 포지션 진입 (시장가 매수)
     order = exchange.create_market_buy_order(symbol, amount)
     print("Long order executed:", order)
     entry_price = current_price  # 진입가: 현재 가격 사용
-    # 롱 포지션의 경우, 손절은 진입가의 0.5% 하락, 익절은 0.5% 상승
-    stop_loss_price = round(entry_price * 0.995, 2)      # 0.5% 하락
-    take_profit_price = round(entry_price * 1.005, 2)      # 0.5% 상승
+
+    # 롱 포지션의 경우: 손절은 진입가의 _long_stop_loss_rate% 하락, 익절은 _long_take_profit_rate% 상승
+    stop_loss_price = round(entry_price * (1.0 - (_long_stop_loss_rate * 0.01)), 2)
+    take_profit_price = round(entry_price * (1.0 + (_long_take_profit_rate * 0.01)), 2)
 
     # Stop Loss 주문 (롱 포지션 청산을 위한 STOP_MARKET 매도 주문)
     sl_order = exchange.create_order(
@@ -89,9 +105,10 @@ elif action == "short":
     order = exchange.create_market_sell_order(symbol, amount)
     print("Short order executed:", order)
     entry_price = current_price
-    # 숏 포지션의 경우, 손절은 진입가의 0.5% 상승, 익절은 0.5% 하락
-    stop_loss_price = round(entry_price * 1.005, 2)      # 0.5% 상승
-    take_profit_price = round(entry_price * 0.995, 2)      # 0.5% 하락
+
+    # 숏 포지션의 경우: 손절은 진입가의 _short_stop_loss_rate% 상승, 익절은 _short_take_profit_rate% 하락
+    stop_loss_price = round(entry_price * (1.0 + (_short_stop_loss_rate * 0.01)), 2)
+    take_profit_price = round(entry_price * (1.0 - (_short_take_profit_rate * 0.01)), 2)
 
     # Stop Loss 주문 (숏 포지션 청산을 위한 STOP_MARKET 매수 주문)
     sl_order = exchange.create_order(

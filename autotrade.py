@@ -26,6 +26,9 @@ from datetime import datetime  # 날짜 및 시간 처리
 
 load_dotenv("buffett-config/.env")
 
+with open("coinName.txt", "r", encoding="utf-8") as f:
+    _coinName = f.read()
+
 # ===== 설정 및 초기화 =====
 # 바이낸스 API 설정
 api_key = os.getenv("BINANCE_API_KEY")  # 바이낸스 API 키
@@ -39,7 +42,7 @@ exchange = ccxt.binance({
         'adjustForTimeDifference': True  # 시간대 차이 조정
     }
 })
-symbol = "XRP/USDT"  # 거래 페어 설정
+symbol = f"{_coinName}/USDT"  # 거래 페어 설정
 
 # OpenAI API 클라이언트 초기화
 client = OpenAI()
@@ -48,7 +51,7 @@ client = OpenAI()
 serp_api_key = os.getenv("SERP_API_KEY")  # 서프 API 키
 
 # SQLite 데이터베이스 설정
-DB_FILE = "XRP_trading.db"  # 데이터베이스 파일명
+DB_FILE = f"{_coinName}_trading.db"  # 데이터베이스 파일명
 
 # ===== 데이터베이스 관련 함수 =====
 def setup_database():
@@ -63,13 +66,13 @@ def setup_database():
     cursor = conn.cursor()
 
     # 거래 기록 테이블
-    cursor.execute('''
+    cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS trades (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp TEXT NOT NULL,           -- 거래 시작 시간
         action TEXT NOT NULL,              -- long 또는 short
         entry_price REAL NOT NULL,         -- 진입 가격
-        amount REAL NOT NULL,              -- 거래량 (XRP)
+        amount REAL NOT NULL,              -- 거래량 ({_coinName})
         leverage INTEGER NOT NULL,         -- 레버리지 배수
         sl_price REAL NOT NULL,            -- 스탑로스 가격
         tp_price REAL NOT NULL,            -- 테이크프로핏 가격
@@ -597,7 +600,7 @@ while True:
         # 현재 시간 및 가격 조회
         current_time = datetime.now().strftime('%H:%M:%S')
         current_price = exchange.fetch_ticker(symbol)['last']
-        print(f"\n[{current_time}] Current XRP Price: ${current_price:,.2f}")
+        print(f"\n[{current_time}] Current {_coinName} Price: ${current_price:,.2f}")
 
         # ===== 1. 현재 포지션 확인 =====
         current_side = None  # 현재 포지션 방향 (long/short/None)
@@ -606,7 +609,7 @@ while True:
         # 바이낸스에서 현재 포지션 조회
         positions = exchange.fetch_positions([symbol])
         for position in positions:
-            if position['symbol'] == 'XRP/USDT:USDT':
+            if position['symbol'] == f'{_coinName}/USDT:USDT':
                 amt = float(position['info']['positionAmt'])
                 if amt > 0:
                     current_side = 'long'
@@ -621,7 +624,7 @@ while True:
 
         # ===== 2. 포지션이 있는 경우 처리 =====
         if current_side:
-            print(f"Current Position: {current_side.upper()} {amount} XRP")
+            print(f"Current Position: {current_side.upper()} {amount} {_coinName}")
 
             # 포지션이 있지만 DB에 기록이 없는 경우 (프로그램 재시작 등)
             if not current_trade:
@@ -771,9 +774,9 @@ while True:
                 print(f"투자 금액: {investment_amount:.2f} USDT")
 
                 # ===== 10. 주문 수량 계산 =====
-                # XRP 수량 = 투자금액 / 현재가격, 소수점 3자리까지 반올림
+                # {_coinName} 수량 = 투자금액 / 현재가격, 소수점 3자리까지 반올림
                 amount = math.ceil((investment_amount / current_price) * 1000) / 1000
-                print(f"주문 수량: {amount} XRP")
+                print(f"주문 수량: {amount} {_coinName}")
 
                 # ===== 11. 레버리지 설정 =====
                 # AI 추천 레버리지 설정

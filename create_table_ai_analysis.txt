@@ -10,3 +10,4 @@ CREATE TABLE IF NOT EXISTS ai_analysis (
         reasoning TEXT NOT NULL,                  -- 분석 근거 설명
         trade_id INTEGER,                         -- 연결된 거래 ID
         FOREIGN KEY (trade_id) REFERENCES trades (id)  -- 외래 키 설정
+);

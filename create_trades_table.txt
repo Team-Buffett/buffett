@@ -16,3 +16,4 @@ CREATE TABLE IF NOT EXISTS trades (
         exit_timestamp TEXT,               -- 청산 시간
         profit_loss REAL,                  -- 손익 (USDT)
         profit_loss_percentage REAL        -- 손익 백분율
+);

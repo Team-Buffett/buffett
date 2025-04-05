@@ -713,7 +713,7 @@ while True:
                 if action == "no_position":
                     print("현재 시장 상황에서는 포지션을 열지 않는 것이 좋습니다.")
                     print(f"이유: {trading_decision['reasoning']}")
-                    time.sleep(60)  # 포지션 없을 때 1분 대기
+                    time.sleep(60)  # 포지션 없을 때 1분 추가 대기
                     continue
 
                 # ===== 9. 투자 금액 계산 =====
@@ -876,8 +876,8 @@ while True:
                 continue
 
         # ===== 14. 일정 시간 대기 후 다음 루프 실행 =====
-        time.sleep(600)  # 메인 루프는 1분마다 실행
+        time.sleep(10)  # 메인 루프는 1분마다 실행
 
     except Exception as e:
         print(f"\n Error: {e}")
-        time.sleep(600)
+        time.sleep(10)

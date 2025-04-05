@@ -1,6 +1,8 @@
 #custom
 .vscode/
 .DS_Store
+historical_data.db
+ai-crypto-backtester/results/
 
 
 # Created by https://www.toptal.com/developers/gitignore/api/python,pycharm,visualstudiocode,git

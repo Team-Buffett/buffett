@@ -65,15 +65,13 @@ def setup_database():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
 
-    # 거래 기록 테이블
-    with open("create_trades_table.txt", "r", encoding="utf-8") as f:
-        sql_template = f.read()
-    cursor.execute(sql_template)
+    # 거래 기록 테이블 & AI 분석 결과 테이블
+    table_files = ["create_trades_table.txt", "create_table_ai_analysis.txt"]
 
-    # AI 분석 결과 테이블
-    with open("create_table_ai_analysis.txt", "r", encoding="utf-8") as f:
-        sql_template = f.read()
-    cursor.execute(sql_template)
+    for file_name in table_files:
+        with open(file_name, "r", encoding="utf-8") as f:
+            sql = f.read()
+        cursor.executescript(sql)
 
     conn.commit()
     conn.close()

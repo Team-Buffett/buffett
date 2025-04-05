@@ -1,0 +1,11 @@
+INSERT INTO ai_analysis (
+    timestamp, 
+    current_price, 
+    direction, 
+    recommended_position_size, 
+    recommended_leverage, 
+    stop_loss_percentage, 
+    take_profit_percentage, 
+    reasoning,
+    trade_id
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)

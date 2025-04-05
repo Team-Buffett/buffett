@@ -7,6 +7,10 @@ import math
 
 ### 수정 가능한 변수 ###
 
+_openai_model_name = "gpt-4o"
+# _openai_model_name = "gpt-3.5-turbo"
+
+
 _reverage = 1
 
 # 포지션별 손절/익절 비율 설정 (단위: 0.01, 즉 0.5 -> 0.5%)
@@ -44,7 +48,7 @@ df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
 # 3. OpenAI를 통한 AI 투자 판단 받기
 client = OpenAI()
 response = client.chat.completions.create(
-    model="gpt-4o",
+    model=_openai_model_name,
     messages=[
         {
             "role": "system",

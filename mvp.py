@@ -7,20 +7,18 @@ import math
 
 ### 수정 가능한 변수 ###
 
-_openai_model_name = "gpt-4o"
-# _openai_model_name = "gpt-3.5-turbo"
+# _openai_model_name = "gpt-4o"
+_openai_model_name = "gpt-3.5-turbo"
 
+_min_order_usdt = 7  # 최소 주문 금액 (예: 7 USDT)
 
 _reverage = 1
 
 # 포지션별 손절/익절 비율 설정 (단위: 0.01, 즉 0.5 -> 0.5%)
-# 롱 포지션 (진입 후 손절: 진입가의 _long_stop_loss_rate% 하락, 익절: _long_take_profit_rate% 상승)
-_long_stop_loss_rate = 1.0      # 롱 포지션 손절 비율 (% 단위)
-_long_take_profit_rate = 1.0    # 롱 포지션 익절 비율
-
-# 숏 포지션 (진입 후 손절: 진입가의 _short_stop_loss_rate% 상승, 익절: _short_take_profit_rate% 하락)
-_short_stop_loss_rate = 1.0     # 숏 포지션 손절 비율
-_short_take_profit_rate = 1.0   # 숏 포지션 익절 비율
+_long_stop_loss_rate = 1.0
+_long_take_profit_rate = 1.0
+_short_stop_loss_rate = 1.0
+_short_take_profit_rate = 1.0
 
 ### 수정 가능한 변수 종료 ###
 
@@ -64,10 +62,10 @@ response = client.chat.completions.create(
 action = response.choices[0].message.content.lower().strip()
 print("AI Action:", action)
 
-# 4. 최소 주문금액(100 USDT 이상) 만족하는 주문 수량 계산
+# 4. 최소 주문금액(_min_order_usdt USDT 이상) 만족하는 주문 수량 계산
 current_price = exchange.fetch_ticker(symbol)['last']
 # 100 USDT 이상 주문하도록 수량 산출 (소수점 3자리 반올림)
-amount = math.ceil((100 / current_price) * 1000) / 1000
+amount = math.ceil((_min_order_usdt / current_price) * 1000) / 1000
 print("Order Amount:", amount)
 
 # 5. 레버리지 _REVERAGE배 설정

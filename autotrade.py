@@ -762,8 +762,8 @@ Follow this process:
 Your response must contain ONLY a valid JSON object with exactly these 6 fields:
 {
   "direction": "LONG" or "SHORT" or "NO_POSITION",
-  "recommended_position_size": [final recommended position size as decimal between 0.1-1.0],
-  "recommended_leverage": [an integer between 1-20],
+  "recommended_position_size": [final recommended position size as decimal between 0.1-0.2],
+  "recommended_leverage": [an integer between 1-10],
   "stop_loss_percentage": [percentage distance from entry as decimal, e.g., 0.005 for 0.5%],
   "take_profit_percentage": [percentage distance from entry as decimal, e.g., 0.005 for 0.5%],
   "reasoning": "Your detailed explanation for all recommendations"
@@ -774,7 +774,7 @@ IMPORTANT: Do not format your response as a code block. Do not include ```json, 
 
             # OpenAI API 호출하여 트레이딩 결정 요청
             response = client.chat.completions.create(
-                model="gpt-4o-mini",  # GPT-4o 모델 사용
+                model="gpt-4o-mini",  # GPT-4o-mini 모델 사용
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": str(market_analysis)}
@@ -846,9 +846,6 @@ IMPORTANT: Do not format your response as a code block. Do not include ```json, 
                 if investment_amount < 6:
                     investment_amount = 6
                     print(f"최소 주문 금액(100 USDT)으로 조정됨")
-                if investment_amount >= 10:
-                    investment_amount = 10
-                    print(f"최소 주문 금액: {investment_amount}로 낮춤")
                 
 
                 print(f"투자 금액: {investment_amount:.2f} USDT")

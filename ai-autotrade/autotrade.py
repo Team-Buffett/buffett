@@ -753,15 +753,29 @@ while True:
                 if action == "long":  # 롱 포지션
                     # 시장가 매수 주문
                     order = exchange.create_market_buy_order(symbol, amount)
-                    entry_price = current_price
+                    entry_price = float(order['average']) if 'average' in order else current_price
 
-                    # 스탑로스/테이크프로핏 가격 계산
-                    sl_price = round(entry_price * (1 - sl_percentage), 2)   # AI 추천 비율만큼 하락
-                    tp_price = round(entry_price * (1 + tp_percentage), 2)   # AI 추천 비율만큼 상승
+                    # SL/TP 가격 계산
+                    sl_price = round(entry_price * (1 - sl_percentage), 4)
+                    tp_price = round(entry_price * (1 + tp_percentage), 4)
 
                     # SL/TP 주문 생성
-                    exchange.create_order(symbol, 'STOP_MARKET', 'sell', amount, None, {'stopPrice': sl_price})
-                    exchange.create_order(symbol, 'TAKE_PROFIT_MARKET', 'sell', amount, None, {'stopPrice': tp_price})
+                    exchange.create_order(
+                        symbol, 'STOP_MARKET', 'sell', amount, None, {
+                            'stopPrice': sl_price,
+                            'closePosition': True,
+                            'priceProtect': True,
+                            'workingType': 'MARK_PRICE'
+                        }
+                    )
+                    exchange.create_order(
+                        symbol, 'TAKE_PROFIT_MARKET', 'sell', amount, None, {
+                            'stopPrice': tp_price,
+                            'closePosition': True,
+                            'priceProtect': True,
+                            'workingType': 'MARK_PRICE'
+                        }
+                    )
 
                     # 거래 데이터 저장
                     trade_data = {
@@ -778,7 +792,7 @@ while True:
                     }
                     trade_id = save_trade(trade_data)
 
-                    # AI 분석 결과와 거래 연결
+                    # AI 분석 결과와 연결
                     update_analysis_sql = "UPDATE ai_analysis SET trade_id = ? WHERE id = ?"
                     conn = sqlite3.connect(DB_FILE)
                     cursor = conn.cursor()
@@ -787,25 +801,37 @@ while True:
                     conn.close()
 
                     print(f"\n=== LONG Position Opened ===")
-                    print(f"Entry: ${entry_price:,.2f}")
-                    print(f"Stop Loss: ${sl_price:,.2f} (-{sl_percentage*100:.2f}%)")
-                    print(f"Take Profit: ${tp_price:,.2f} (+{tp_percentage*100:.2f}%)")
-                    print(f"Leverage: {recommended_leverage}x")
-                    print(f"분석 근거: {trading_decision['reasoning']}")
+                    print(f"Entry: ${entry_price:,.4f}")
+                    print(f"Stop Loss: ${sl_price:,.4f}")
+                    print(f"Take Profit: ${tp_price:,.4f}")
                     print("===========================")
 
                 elif action == "short":  # 숏 포지션
                     # 시장가 매도 주문
                     order = exchange.create_market_sell_order(symbol, amount)
-                    entry_price = current_price
+                    entry_price = float(order['average']) if 'average' in order else current_price
 
-                    # 스탑로스/테이크프로핏 가격 계산
-                    sl_price = round(entry_price * (1 + sl_percentage), 2)   # AI 추천 비율만큼 상승
-                    tp_price = round(entry_price * (1 - tp_percentage), 2)   # AI 추천 비율만큼 하락
+                    # SL/TP 가격 계산
+                    sl_price = round(entry_price * (1 + sl_percentage), 4)
+                    tp_price = round(entry_price * (1 - tp_percentage), 4)
 
                     # SL/TP 주문 생성
-                    exchange.create_order(symbol, 'STOP_MARKET', 'buy', amount, None, {'stopPrice': sl_price})
-                    exchange.create_order(symbol, 'TAKE_PROFIT_MARKET', 'buy', amount, None, {'stopPrice': tp_price})
+                    exchange.create_order(
+                        symbol, 'STOP_MARKET', 'buy', amount, None, {
+                            'stopPrice': sl_price,
+                            'closePosition': True,
+                            'priceProtect': True,
+                            'workingType': 'MARK_PRICE'
+                        }
+                    )
+                    exchange.create_order(
+                        symbol, 'TAKE_PROFIT_MARKET', 'buy', amount, None, {
+                            'stopPrice': tp_price,
+                            'closePosition': True,
+                            'priceProtect': True,
+                            'workingType': 'MARK_PRICE'
+                        }
+                    )
 
                     # 거래 데이터 저장
                     trade_data = {
@@ -822,7 +848,7 @@ while True:
                     }
                     trade_id = save_trade(trade_data)
 
-                    # AI 분석 결과와 거래 연결
+                    # AI 분석 결과와 연결
                     update_analysis_sql = "UPDATE ai_analysis SET trade_id = ? WHERE id = ?"
                     conn = sqlite3.connect(DB_FILE)
                     cursor = conn.cursor()
@@ -831,12 +857,11 @@ while True:
                     conn.close()
 
                     print(f"\n=== SHORT Position Opened ===")
-                    print(f"Entry: ${entry_price:,.2f}")
-                    print(f"Stop Loss: ${sl_price:,.2f} (+{sl_percentage*100:.2f}%)")
-                    print(f"Take Profit: ${tp_price:,.2f} (-{tp_percentage*100:.2f}%)")
-                    print(f"Leverage: {recommended_leverage}x")
-                    print(f"분석 근거: {trading_decision['reasoning']}")
-                    print("============================")
+                    print(f"Entry: ${entry_price:,.4f}")
+                    print(f"Stop Loss: ${sl_price:,.4f}")
+                    print(f"Take Profit: ${tp_price:,.4f}")
+                    print("===========================")
+
                 else:
                     print("Action이 'long' 또는 'short'가 아니므로 주문을 실행하지 않습니다.")
 

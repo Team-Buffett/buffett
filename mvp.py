@@ -20,7 +20,7 @@ _short_take_profit_rate = 1.0   # 숏 포지션 익절 비율
 
 ### 수정 가능한 변수 종료 ###
 
-load_dotenv()
+load_dotenv("buffett-config/.env")
 
 # 바이낸스 세팅
 api_key = os.getenv("BINANCE_API_KEY")

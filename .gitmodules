@@ -1,0 +1,3 @@
+[submodule "buffett-config"]
+	path = buffett-config
+	url = https://github.com/Team-Buffett/buffett-config.git

@@ -24,7 +24,7 @@ from openai import OpenAI  # OpenAI API 접근
 from datetime import datetime  # 날짜 및 시간 처리
 
 
-load_dotenv("buffett-config/.env")
+load_dotenv("../buffett-config/.env")
 
 with open("coinName.txt", "r", encoding="utf-8") as f:
     _coinName = f.read()

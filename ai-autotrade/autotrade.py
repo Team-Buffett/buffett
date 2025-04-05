@@ -91,28 +91,20 @@ def save_ai_analysis(analysis_data, trade_id=None):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
 
-    cursor.execute('''
-    INSERT INTO ai_analysis (
-        timestamp, 
-        current_price, 
-        direction, 
-        recommended_position_size, 
-        recommended_leverage, 
-        stop_loss_percentage, 
-        take_profit_percentage, 
-        reasoning,
-        trade_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (
+    # SQL 쿼리를 외부 텍스트 파일에서 불러오기
+    with open("insert_ai_analysis.txt", "r", encoding="utf-8") as f:
+        sql = f.read()
+
+    cursor.execute(sql, (
         datetime.now().isoformat(),  # 현재 시간
-        analysis_data.get('current_price', 0),  # 현재 가격
-        analysis_data.get('direction', 'NO_POSITION'),  # 추천 방향
-        analysis_data.get('recommended_position_size', 0),  # 추천 포지션 크기
-        analysis_data.get('recommended_leverage', 0),  # 추천 레버리지
-        analysis_data.get('stop_loss_percentage', 0),  # 스탑로스 비율
-        analysis_data.get('take_profit_percentage', 0),  # 테이크프로핏 비율
-        analysis_data.get('reasoning', ''),  # 분석 근거
-        trade_id  # 연결된 거래 ID
+        analysis_data.get('current_price', 0),
+        analysis_data.get('direction', 'NO_POSITION'),
+        analysis_data.get('recommended_position_size', 0),
+        analysis_data.get('recommended_leverage', 0),
+        analysis_data.get('stop_loss_percentage', 0),
+        analysis_data.get('take_profit_percentage', 0),
+        analysis_data.get('reasoning', ''),
+        trade_id
     ))
 
     analysis_id = cursor.lastrowid

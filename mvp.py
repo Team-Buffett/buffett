@@ -7,12 +7,12 @@ import math
 
 ### 수정 가능한 변수 ###
 
-# _openai_model_name = "gpt-4o"
-_openai_model_name = "gpt-3.5-turbo"
+_openai_model_name = "gpt-4o"
+# _openai_model_name = "gpt-3.5-turbo"
 
-_symbol = "BTC/USDT"        # 거래할 심볼
+_symbol = "1000PEPE/USDT"       # 거래할 심볼
 _min_order_usdt = 7         # 최소 주문 금액 (예: 7 USDT)
-_reverage = 1               # 레버리지 배율
+_reverage = 2               # 레버리지 배율
 
 # 포지션별 손절/익절 비율 설정 (단위: 0.01, 즉 0.5 -> 0.5%)
 _long_stop_loss_rate = 1.0

@@ -4,6 +4,8 @@ import random
 import pandas as pd
 from datetime import datetime
 from openai import OpenAI
+from .api_counter import increment_api_count
+from .api_counter import get_api_call_count
 
 def get_ai_decision(market_data, current_time, provider="random", model=None, system_prompt=None, ai_input_config=None):
     """
@@ -34,7 +36,7 @@ def _get_random_decision():
     
     # Random parameters
     position_size = round(random.uniform(0.1, 1.0), 2)  # 10%~100%
-    leverage = random.randint(1, 5)  # 1x~5x leverage
+    leverage = random.randint(1, 20)  # 1x~20x leverage
     stop_loss = round(random.uniform(0.01, 0.05), 2)  # 1%~5% stop loss
     take_profit = round(random.uniform(0.01, 0.1), 2)  # 1%~10% take profit
     
@@ -184,7 +186,10 @@ def _call_openai_api(market_data, current_time, model="gpt-4", system_prompt=Non
         if is_o_model and reasoning_effort:
             api_params["reasoning_effort"] = reasoning_effort
             print(f"Using 'developer' role and reasoning_effort='{reasoning_effort}' for model: {model}")
-        
+
+        increment_api_count()
+        print("API CALL COUNT: ", get_api_call_count())
+
         response = client.chat.completions.create(**api_params)
         
         decision_text = response.choices[0].message.content.strip()

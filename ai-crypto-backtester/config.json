@@ -1,14 +1,14 @@
 {
     "backtest_settings": {
         "symbol": "BTC/USDT",
-        "start_date": "2025-01-01",
-        "end_date": "2025-01-30",
+        "start_date": "2025-02-01",
+        "end_date": "2025-02-28",
         "initial_capital": 10000,
         "fee": 0.0005
     },
     "ai_settings": {
         "provider": "openai",
-        "model": "o3-mini",
+        "model": "gpt-4o-mini",
         "system_prompt_file": "prompts/system_prompt.txt",
         "reasoning_effort": "high",
         "input_data": {

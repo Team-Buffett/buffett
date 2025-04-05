@@ -4,5 +4,5 @@ ccxt
 pandas
 streamlit
 plotly
-numpy>=2.2.4
-tqdm>=4.65.0
+numpy
+tqdm

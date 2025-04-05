@@ -9,7 +9,7 @@ import numpy as np
 
 # 페이지 설정
 st.set_page_config(
-    page_title="Bitcoin Trading Dashboard",
+    page_title="XRP Trading Dashboard",
     page_icon="📈",
     layout="wide"
 )
@@ -77,7 +77,7 @@ st.markdown("""
 # SQLite 데이터베이스에서 데이터를 읽는 함수들
 def get_trades_data():
     # 새로운 연결을 만들어 현재 스레드에서 사용
-    conn = sqlite3.connect("bitcoin_trading.db")
+    conn = sqlite3.connect("XRP_trading.db")
     query = """
     SELECT 
         id, timestamp, action, entry_price, exit_price, amount, leverage, 
@@ -94,7 +94,7 @@ def get_trades_data():
 
 def get_ai_analysis_data():
     # 새로운 연결을 만들어 현재 스레드에서 사용
-    conn = sqlite3.connect("bitcoin_trading.db")
+    conn = sqlite3.connect("XRP_trading.db")
     query = """
     SELECT 
         id, timestamp, current_price, direction, 
@@ -109,15 +109,15 @@ def get_ai_analysis_data():
 
 # 비트코인 가격 데이터 가져오기
 @st.cache_data(ttl=3600)  # 1시간 캐시
-def get_bitcoin_price_data(timeframe='1d', limit=90):
+def get_XRP_price_data(timeframe='1d', limit=90):
     exchange = ccxt.binance()
-    ohlcv = exchange.fetch_ohlcv('BTC/USDT', timeframe, limit=limit)
+    ohlcv = exchange.fetch_ohlcv('XRP/USDT', timeframe, limit=limit)
     df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
     df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
     return df
 
 # 트레이딩 성과 지표 계산 함수
-def calculate_trading_metrics(trades_df, btc_price_df=None, time_filter=None, filter_time=None):
+def calculate_trading_metrics(trades_df, XRP_price_df=None, time_filter=None, filter_time=None):
     if trades_df.empty:
         return {
             'total_return': 0,
@@ -157,27 +157,27 @@ def calculate_trading_metrics(trades_df, btc_price_df=None, time_filter=None, fi
 
     # 시장 수익률 계산 (Buy & Hold 전략)
     market_return = 0
-    if btc_price_df is not None and not btc_price_df.empty:
+    if XRP_price_df is not None and not XRP_price_df.empty:
         if time_filter != "전체" and filter_time is not None:
-            # 필터링된 기간에 해당하는 BTC 가격 데이터
-            filtered_btc = btc_price_df[btc_price_df['timestamp'] >= filter_time]
-            if not filtered_btc.empty:
-                start_price = filtered_btc.iloc[0]['close']
-                end_price = filtered_btc.iloc[-1]['close']
+            # 필터링된 기간에 해당하는 XRP 가격 데이터
+            filtered_XRP = XRP_price_df[XRP_price_df['timestamp'] >= filter_time]
+            if not filtered_XRP.empty:
+                start_price = filtered_XRP.iloc[0]['close']
+                end_price = filtered_XRP.iloc[-1]['close']
                 market_return = ((end_price - start_price) / start_price) * 100
         else:
-            # 거래 기간에 맞춰 BTC 가격 데이터
+            # 거래 기간에 맞춰 XRP 가격 데이터
             first_trade_time = closed_trades.sort_values('timestamp').iloc[0]['timestamp']
             last_trade_time = closed_trades.sort_values('timestamp').iloc[-1]['timestamp' if 'exit_timestamp' not in closed_trades.columns else 'exit_timestamp']
 
-            relevant_btc = btc_price_df[
-                (btc_price_df['timestamp'] >= first_trade_time) &
-                (btc_price_df['timestamp'] <= last_trade_time)
+            relevant_XRP = XRP_price_df[
+                (XRP_price_df['timestamp'] >= first_trade_time) &
+                (XRP_price_df['timestamp'] <= last_trade_time)
                 ]
 
-            if not relevant_btc.empty:
-                start_price = relevant_btc.iloc[0]['close']
-                end_price = relevant_btc.iloc[-1]['close']
+            if not relevant_XRP.empty:
+                start_price = relevant_XRP.iloc[0]['close']
+                end_price = relevant_XRP.iloc[-1]['close']
                 market_return = ((end_price - start_price) / start_price) * 100
 
     # 승률
@@ -252,10 +252,10 @@ try:
     # 데이터 로드
     trades_df = get_trades_data()
     ai_analysis_df = get_ai_analysis_data()
-    btc_price_df = get_bitcoin_price_data()
+    XRP_price_df = get_XRP_price_data()
 
     # 시간 필터
-    st.sidebar.title("Bitcoin Trading Bot")
+    st.sidebar.title("XRP Trading Bot")
     time_filter = st.sidebar.selectbox(
         "기간 선택:",
         ["전체", "최근 24시간", "최근 7일", "최근 30일", "최근 90일"]
@@ -285,18 +285,18 @@ try:
         chart_days = 90
 
     # 트레이딩 지표 계산
-    metrics = calculate_trading_metrics(filtered_trades, btc_price_df, time_filter, filter_time)
+    metrics = calculate_trading_metrics(filtered_trades, XRP_price_df, time_filter, filter_time)
 
     # 현재 오픈 포지션
     open_trades = trades_df[trades_df['status'] == 'OPEN']
     has_open_position = len(open_trades) > 0
     current_position = open_trades.iloc[0] if has_open_position else None
 
-    # 현재 BTC 가격
-    current_btc_price = ai_analysis_df.iloc[0]['current_price'] if not ai_analysis_df.empty else btc_price_df.iloc[-1]['close']
+    # 현재 XRP 가격
+    current_XRP_price = ai_analysis_df.iloc[0]['current_price'] if not ai_analysis_df.empty else XRP_price_df.iloc[-1]['close']
 
     # 대시보드 메인
-    st.markdown("<h1 class='header'>Bitcoin Trading Dashboard</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='header'>XRP Trading Dashboard</h1>", unsafe_allow_html=True)
 
     # 주요 트레이딩 지표 표시
     st.markdown(f"""
@@ -358,14 +358,14 @@ try:
     </div>
     """, unsafe_allow_html=True)
 
-    # 현재 BTC 가격 및 포지션 정보
+    # 현재 XRP 가격 및 포지션 정보
     position_cols = st.columns(2)
 
     with position_cols[0]:
         st.markdown(f"""
         <div class="metric-card" style="width: 100%">
-            <div class="metric-title">Current BTC Price</div>
-            <div class="metric-value">${current_btc_price:,.2f}</div>
+            <div class="metric-title">Current XRP Price</div>
+            <div class="metric-value">${current_XRP_price:,.2f}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -379,21 +379,21 @@ try:
         </div>
         """, unsafe_allow_html=True)
 
-    # BTC 가격 차트와 거래 시점 표시
-    st.markdown("<h2 class='subheader'>Bitcoin Price Chart & Trade Entries</h2>", unsafe_allow_html=True)
+    # XRP 가격 차트와 거래 시점 표시
+    st.markdown("<h2 class='subheader'>XRP Price Chart & Trade Entries</h2>", unsafe_allow_html=True)
 
-    # BTC 차트 기간 필터링
-    filtered_price_df = btc_price_df[btc_price_df['timestamp'] > (now - timedelta(days=chart_days))]
+    # XRP 차트 기간 필터링
+    filtered_price_df = XRP_price_df[XRP_price_df['timestamp'] > (now - timedelta(days=chart_days))]
 
     # 비트코인 차트 + 거래 시점 차트 생성
     fig = go.Figure()
 
-    # BTC 가격 라인
+    # XRP 가격 라인
     fig.add_trace(go.Scatter(
         x=filtered_price_df['timestamp'],
         y=filtered_price_df['close'],
         mode='lines',
-        name='BTC Price',
+        name='XRP Price',
         line=dict(color='gray', width=2),
         hovertemplate='<b>Price</b>: $%{y:,.2f}<br>'
     ))
@@ -445,7 +445,7 @@ try:
 
     # 차트 레이아웃 설정
     fig.update_layout(
-        title='Bitcoin Price & Trading Points',
+        title='XRP Price & Trading Points',
         xaxis_title='Date',
         yaxis_title='Price (USD)',
         hovermode='x unified',
@@ -534,19 +534,19 @@ try:
             - **Entry Time**: {entry_time}
             - **Entry Price**: ${current_position['entry_price']:,.2f}
             - **Leverage**: {current_position['leverage']}x
-            - **Amount**: {current_position['amount']} BTC
+            - **Amount**: {current_position['amount']} XRP
             """)
 
         with position_cols[1]:
             # 현재가와 진입가 비교 차트
-            if isinstance(current_btc_price, (int, float)):
-                price_diff = current_btc_price - current_position['entry_price']
+            if isinstance(current_XRP_price, (int, float)):
+                price_diff = current_XRP_price - current_position['entry_price']
                 price_diff_pct = (price_diff / current_position['entry_price']) * 100
                 price_color = "green" if (current_position['action'] == 'long' and price_diff > 0) or (current_position['action'] == 'short' and price_diff < 0) else "red"
 
                 st.markdown(f"""
                 ### Current Performance
-                - **Current Price**: ${current_btc_price:,.2f}
+                - **Current Price**: ${current_XRP_price:,.2f}
                 - **Price Change**: ${price_diff:,.2f} ({price_diff_pct:.2f}%)
                 - **Estimated P/L**: <span style='color:{price_color};'>${price_diff * current_position['amount'] * current_position['leverage']:,.2f}</span>
                 """, unsafe_allow_html=True)

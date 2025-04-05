@@ -65,27 +65,15 @@ def setup_database():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
 
+    # 거래 기록 테이블
     with open("create_trades_table.txt", "r", encoding="utf-8") as f:
         sql_template = f.read()
-    # 거래 기록 테이블
     cursor.execute(sql_template)
 
     # AI 분석 결과 테이블
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS ai_analysis (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp TEXT NOT NULL,               -- 분석 시간
-        current_price REAL NOT NULL,           -- 분석 시점 가격
-        direction TEXT NOT NULL,               -- 방향 추천 (LONG/SHORT/NO_POSITION)
-        recommended_position_size REAL NOT NULL,  -- 추천 포지션 크기
-        recommended_leverage INTEGER NOT NULL,    -- 추천 레버리지
-        stop_loss_percentage REAL NOT NULL,       -- 추천 스탑로스 비율
-        take_profit_percentage REAL NOT NULL,     -- 추천 테이크프로핏 비율
-        reasoning TEXT NOT NULL,                  -- 분석 근거 설명
-        trade_id INTEGER,                         -- 연결된 거래 ID
-        FOREIGN KEY (trade_id) REFERENCES trades (id)  -- 외래 키 설정
-    )
-    ''')
+    with open("create_table_ai_analysis.txt", "r", encoding="utf-8") as f:
+        sql_template = f.read()
+    cursor.execute(sql_template)
 
     conn.commit()
     conn.close()

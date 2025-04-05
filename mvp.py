@@ -4,20 +4,9 @@ import math
 import time
 import pandas as pd
 from dotenv import load_dotenv
+load_dotenv("buffett-config/.env")
 from openai import OpenAI
 from datetime import datetime
-load_dotenv("buffett-config/.env")
-
-### 수정 가능한 변수 ###
-
-# _openai_model_name = "gpt-4o"
-_openai_model_name = "gpt-3.5-turbo"
-
-symbol = "1000PEPE/USDT"       # 거래할 심볼
-_min_order_usdt = 0.1         # 최소 주문 금액 (예: 7 USDT)
-_leverage = 2               # 레버리지 배율
-
-### 수정 가능한 변수 종료 ###
 
 # 바이낸스 세팅
 api_key = os.getenv("BINANCE_API_KEY")
@@ -31,16 +20,16 @@ exchange = ccxt.binance({
         'adjustForTimeDifference': True
     }
 })
+symbol = "BTC/USDT"
 client = OpenAI()
 
-print(f"\n=== {symbol} Trading Bot Started ===")
+print("\n=== Bitcoin Trading Bot Started ===")
 print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 print("Trading Pair:", symbol)
-print(f"Leverage: {_leverage}x")
+print("Leverage: 5x")
 print("SL/TP: ±0.5%")
 print("Multi Timeframe Analysis: 15m, 1h, 4h")
 print("===================================\n")
-
 
 # 멀티 타임프레임 데이터 수집 함수
 def fetch_multi_timeframe_data():
@@ -62,20 +51,19 @@ def fetch_multi_timeframe_data():
             print(f"Error fetching {tf_name} data: {e}")
     return multi_tf_data
 
-
 while True:
     try:
         # 현재 시간 및 가격 조회
         current_time = datetime.now().strftime('%H:%M:%S')
         current_price = exchange.fetch_ticker(symbol)['last']
-        print(f"\n[{current_time}] Current {symbol} Price: ${current_price:,.2f}")
+        print(f"\n[{current_time}] Current BTC Price: ${current_price:,.2f}")
 
         # 포지션 확인
         current_side = None
         amount = 0
         positions = exchange.fetch_positions([symbol])
         for position in positions:
-            if position['symbol'] == symbol+':USDT':
+            if position['symbol'] == 'BTC/USDT:USDT':
                 amt = float(position['info']['positionAmt'])
                 if amt > 0:
                     current_side = 'long'
@@ -84,7 +72,7 @@ while True:
                     current_side = 'short'
                     amount = abs(amt)
         if current_side:
-            print(f"Current Position: {current_side.upper()} {amount} {symbol}")
+            print(f"Current Position: {current_side.upper()} {amount} BTC")
         else:
             # 포지션이 없을 경우, 남아있는 미체결 주문 취소
             try:
@@ -116,7 +104,7 @@ while True:
 
             # AI에게 분석 요청
             response = client.chat.completions.create(
-                model=_openai_model_name,
+                model="gpt-4o",
                 messages=[
                     {"role": "system", "content": """
                     You are a crypto trading expert specializing in multi-timeframe analysis.
@@ -135,12 +123,12 @@ while True:
             action = response.choices[0].message.content.lower().strip()
             print(f"AI Decision (Multi-Timeframe Analysis): {action.upper()}")
 
-            # 주문 수량 계산 (최소 _min_order_usdt USDT 이상 주문)
-            amount = math.ceil((_min_order_usdt / current_price) * 1000) / 1000
-            print(f"Order Amount: {amount} {symbol}")
+            # 주문 수량 계산 (최소 100 USDT 이상 주문)
+            amount = math.ceil((100 / current_price) * 1000) / 1000
+            print(f"Order Amount: {amount} BTC")
 
             # 레버리지 설정
-            exchange.set_leverage(_leverage, symbol)
+            exchange.set_leverage(5, symbol)
 
             # 포지션 진입 및 SL/TP 주문 (버퍼 0.5% 적용)
             if action == "long":

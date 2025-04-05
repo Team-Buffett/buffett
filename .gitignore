@@ -326,3 +326,19 @@ pyrightconfig.json
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/python,pycharm,visualstudiocode,git
+
+
+
+# IDE
+*.swp
+*.swo
+
+# Project specific
+data/*.db
+results/*
+!results/.gitkeep
+
+# Logs
+
+# OS specific
+Thumbs.db

@@ -61,7 +61,8 @@ Follow this process:
 • If conviction < 55%, do not enter (use “NO_POSITION”)
 • Reduce exposure during uncertain or choppy markets
 • Be more selective if win rate is under 50%
-10.	Provide output as valid JSON:
+10. "However, in the case of cryptocurrencies, when there is high volatility, use short, long, or no position based on the market condition. In a downtrend, use short; in an uptrend, use long; if unsure, use no position."
+11.	Provide output as valid JSON:
 Respond ONLY with a JSON object containing the following fields:
 
 {

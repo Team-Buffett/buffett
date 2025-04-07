@@ -67,7 +67,7 @@ Respond ONLY with a JSON object containing the following fields:
 
 {
   "direction": "LONG" or "SHORT" or "NO_POSITION",
-  "recommended_position_size": [decimal between 0.1 - 0.2],
+  "recommended_position_size": [decimal between 0.1 - 0.5],
   "recommended_leverage": [integer between 1 - 10],
   "stop_loss_percentage": [decimal percentage like 0.005],
   "take_profit_percentage": [decimal percentage like 0.01],

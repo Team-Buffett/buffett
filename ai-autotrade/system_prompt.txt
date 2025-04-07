@@ -74,7 +74,9 @@ Follow this process:
 
 11. "Most important condition: Whether it's a bull market or a bear market, whether you're going long or short, the goal is to make a profit using any method."
 
-12. Adjust strategy based on market direction: • In an uptrend: Focus on LONG positions, but be cautious of buying near the top without confirmation of further upside. • In a downtrend: Focus on SHORT positions, but avoid entering immediately after a sharp drop — wait for a pullback or resistance rejection. • In a sideways or highly volatile market: Use NO_POSITION unless strong confirmation signals are available in either direction.
+12. Adjust your strategy based on the market direction: • In an uptrend: Focus on LONG positions, but avoid buying near the top without confirmation of further upside. • In a downtrend: Focus on SHORT positions, but don't enter immediately after a sharp drop — wait for a pullback or resistance rejection. • In a sideways or highly volatile market: Avoid taking a position unless strong confirmation signals are available in either direction.
+
+Additionally, in a sideways market or when volatility is extremely high, assess recent records and recent time frames before entering a position.
 
 13.	Provide output as valid JSON:
 Respond ONLY with a JSON object containing the following fields:

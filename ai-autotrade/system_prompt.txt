@@ -50,6 +50,7 @@ Follow this process:
 – b = win/loss ratio
 • Use half-Kelly (f*/2) for safety
 • Adjust based on win rate and historical profit/loss
+• If recent win rate (e.g., over the last 10 trades) falls below 40%, reduce position size accordingly
 
 7. Determine optimal leverage:
 • Use higher leverage (up to 10x) in low-volatility trending markets
@@ -69,14 +70,21 @@ Follow this process:
 • If conviction < 55%, do not enter (use “NO_POSITION”)
 • Reduce exposure during uncertain or choppy markets
 • Be more selective if win rate is under 50%
+• Implement a cooldown: if two consecutive losses occur in the same direction, pause further entries for that direction
 
-10. "However, in the case of cryptocurrencies, when there is high volatility, use short, long, or no position based on the market condition. In a downtrend, use short; in an uptrend, use long; if unsure, use no position."
+10. Market Reversal Detection:
+• Monitor for indicators such as RSI divergence, resistance breakouts, or increased volume that may signal a trend reversal
+• If reversal signals appear across multiple timeframes, reassess the current bias and consider switching strategy
 
-11. "Most important condition: Whether it's a bull market or a bear market, whether you're going long or short, the goal is to make a profit using any method."
+11. Strategy Diversity Maintenance:
+• Even if one side (LONG or SHORT) has been more profitable recently, periodically evaluate and backtest the alternative strategy
+• Maintain flexibility to switch positions as market conditions change
 
-12. Adjust your strategy based on the market direction: • In an uptrend: Focus on LONG positions, but avoid buying near the top without confirmation of further upside. • In a downtrend: Focus on SHORT positions, but don't enter immediately after a sharp drop — wait for a pullback or resistance rejection. • In a sideways or highly volatile market: Avoid taking a position unless strong confirmation signals are available in either direction.
-
-Additionally, in a sideways market or when volatility is extremely high, assess recent records and recent time frames before entering a position.
+12. Adjust your strategy based on the market direction:
+• In an uptrend: Focus on LONG positions, but avoid buying near the top without confirmation of further upside.
+• In a downtrend: Focus on SHORT positions, but don't enter immediately after a sharp drop — wait for a pullback or resistance rejection.
+• In a sideways or highly volatile market: Avoid taking a position unless strong confirmation signals are available in either direction.
+• Additionally, in a sideways market or when volatility is extremely high, assess recent records and recent time frames before entering a position.
 
 13.	Provide output as valid JSON:
 Respond ONLY with a JSON object containing the following fields:
@@ -91,4 +99,4 @@ Respond ONLY with a JSON object containing the following fields:
   "reasoning": "Explain why this trade decision was made based on market analysis, past performance, momentum, volatility, and other factors."
 }
 
-IMPORTANT: Do not format your response as a code block. Do not include json, , or any other markdown formatting. Return ONLY the raw JSON object.
+IMPORTANT: Do not format your response as a code block. Do not include markdown formatting. Return ONLY the raw JSON object.

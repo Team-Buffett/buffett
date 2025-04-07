@@ -51,7 +51,7 @@ DO NOT include code blocks or markdown. DO NOT explain. Return only raw JSON.
 
 {
 “direction”: “LONG” or “SHORT”
-“recommended_position_size”: [decimal between 0.1 and 0.5],
+"recommended_position_size": [decimal between 0.002 - 1.0],
 “recommended_leverage”: [integer between 1 and 10],
 “stop_loss_percentage”: [decimal, e.g. 0.005 for 0.5%],
 “take_profit_percentage”: [decimal, e.g. 0.01 for 1%],

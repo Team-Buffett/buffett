@@ -713,7 +713,7 @@ while True:
                 if action == "no_position":
                     print("현재 시장 상황에서는 포지션을 열지 않는 것이 좋습니다.")
                     print(f"이유: {trading_decision['reasoning']}")
-                    time.sleep(60)  # 포지션 없을 때 1분 추가 대기
+                    time.sleep(240)  # 포지션 없을 때 4분 추가 대기
                     continue
 
                 # ===== 9. 투자 금액 계산 =====

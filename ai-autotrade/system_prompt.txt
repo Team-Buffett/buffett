@@ -52,8 +52,8 @@ DO NOT include code blocks or markdown. DO NOT explain. Return only raw JSON.
   "direction": "LONG" or "SHORT" or "NO_POSITION",
   "recommended_position_size": [decimal between 0.1 and 2.0],
   "recommended_leverage": [integer between 1 and 25],
-  "stop_loss_percentage": 0.03,
-  "take_profit_percentage": 0.05,
+  "stop_loss_percentage": 0.02,
+  "take_profit_percentage": 0.03,
   "reasoning": "Detailed explanation of analysis, direction, risk and position sizing decision"
 }
 IMPORTANT: Do not format your response as a code block. Do not include markdown formatting. Return ONLY the raw JSON object.

@@ -51,7 +51,7 @@ DO NOT include code blocks or markdown. DO NOT explain. Return only raw JSON.
 {
   "direction": "LONG" or "SHORT" or "NO_POSITION",
   "recommended_position_size": [decimal between 0.1 and 2.0],
-  "recommended_leverage": [integer between 1 and 25],
+  "recommended_leverage": [integer between 1 and 15],
   "stop_loss_percentage": 0.02,
   "take_profit_percentage": 0.03,
   "reasoning": "Detailed explanation of analysis, direction, risk and position sizing decision"

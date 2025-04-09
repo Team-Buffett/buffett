@@ -20,13 +20,12 @@
 
 ### 스크린샷
 
-<img width="715" alt="image" src="https://github.com/user-attachments/assets/fe5c4e49-b547-418b-a728-3c38e221dd90" />
-<img width="734" alt="image" src="https://github.com/user-attachments/assets/f2e221fe-5a60-45f0-b623-2561c9c44aff" />
-<img width="734" alt="image" src="https://github.com/user-attachments/assets/ac78f91d-b032-4eed-81fc-f4aa7fc58546" />
-
-<img width="736" alt="image" src="https://github.com/user-attachments/assets/6edb1123-b3b9-4784-8eb9-bd83d7a4a73b" />
-<img width="712" alt="image" src="https://github.com/user-attachments/assets/ae5c1a10-08c6-4383-9fba-e1d796fa0d00" />
-
+<img width="730" alt="image" src="https://github.com/user-attachments/assets/0e769756-10ae-4162-b170-461ff1a17553" />
+<img width="735" alt="image" src="https://github.com/user-attachments/assets/8e25de2b-e9f2-4c99-8f7c-fbadd8779a4f" />
+<img width="732" alt="image" src="https://github.com/user-attachments/assets/3754bcb1-e36e-4c7f-bc5b-ab1a2670e30e" />
+<img width="736" alt="image" src="https://github.com/user-attachments/assets/6f7f6f43-0d9b-4c23-b63f-8541c0733e73" />
+<img width="737" alt="image" src="https://github.com/user-attachments/assets/54064b90-5989-4300-8e66-b491d22b3b7c" />
+<img width="737" alt="image" src="https://github.com/user-attachments/assets/8c1b1d85-c57b-4027-ba4c-52371eaf8895" />
 
 ### 특징
 

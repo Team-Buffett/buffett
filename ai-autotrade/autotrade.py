@@ -446,10 +446,13 @@ def fetch_multi_timeframe_data():
     """
     # 타임프레임별 데이터 수집 설정
     timeframes = {
-        "15m": {"timeframe": "15m", "limit": 96},  # 24시간 (15분 * 96)
-        "1h": {"timeframe": "1h", "limit": 48},    # 48시간 (1시간 * 48)
-        "4h": {"timeframe": "4h", "limit": 30}     # 5일 (4시간 * 30)
+    "15m": {"timeframe": "15m", "limit": 96},  # 24시간 (15분 * 96)
+    "1h": {"timeframe": "1h", "limit": 48},    # 48시간 (1시간 * 48)
+    "4h": {"timeframe": "4h", "limit": 30},    # 5일 (4시간 * 30)
+    "1m": {"timeframe": "1m", "limit": 1440},  # 24시간 (1분 * 1440)
+    "5m": {"timeframe": "5m", "limit": 288}    # 24시간 (5분 * 288)
     }
+
 
     multi_tf_data = {}
 

@@ -504,9 +504,10 @@ try:
     st.markdown("<h2 class='subheader'>Recent Trades</h2>", unsafe_allow_html=True)
     if not filtered_trades.empty:
         # 표시용 데이터 준비
-        display_df = filtered_trades[['timestamp', 'action', 'entry_price', 'exit_price', 'status', 'profit_loss']].copy()
+        display_df = filtered_trades[['id', 'timestamp', 'action', 'entry_price', 'exit_price', 'status', 'profit_loss']].copy()
         display_df['timestamp'] = display_df['timestamp'].dt.strftime('%Y-%m-%d %H:%M')
         display_df = display_df.rename(columns={
+            'id': 'ID',
             'timestamp': 'Date',
             'action': 'Direction',
             'entry_price': 'Entry Price',
@@ -523,6 +524,7 @@ try:
         )
     else:
         st.info("No trades in the selected time period.")
+
 
     # 오픈 포지션 정보
     if has_open_position:
@@ -579,6 +581,45 @@ try:
                 st.write(latest_analysis['reasoning'])
     else:
         st.info("No AI analysis data available.")
+
+
+    # 추가 섹션: 거래 상세 정보 (Trade Details)
+    st.markdown("<h2 class='subheader'>Trade Details</h2>", unsafe_allow_html=True)
+
+    # filtered_trades 데이터프레임에서 거래 ID 목록을 selectbox 옵션으로 사용합니다.
+    if not filtered_trades.empty:
+        trade_ids = filtered_trades['id'].unique()
+        selected_trade_id = st.selectbox("Select Trade ID", options=trade_ids, format_func=lambda x: f"Trade {x}")
+
+        # 선택한 거래 id에 해당하는 상세 정보 가져오기 (첫번째 행 사용)
+        selected_trade = filtered_trades[filtered_trades['id'] == selected_trade_id].iloc[0]
+
+        # 거래 기본 정보 표시 (날짜, 방향, 진입가, 청산가 등)
+        st.markdown("#### Trade Information")
+        trade_info = f"""
+        - **Trade ID**: {selected_trade['id']}
+        - **Date**: {selected_trade['timestamp'].strftime('%Y-%m-%d %H:%M:%S')}
+        - **Direction**: {selected_trade['action'].upper()}
+        - **Entry Price**: ${selected_trade['entry_price']:,.2f}
+        - **Exit Price**: {"N/A" if pd.isna(selected_trade['exit_price']) else f"${selected_trade['exit_price']:,.2f}"}
+        - **Amount**: {selected_trade['amount']} {_coinName}
+        - **Leverage**: {selected_trade['leverage']}x
+        - **Status**: {selected_trade['status']}
+        - **Profit/Loss**: ${selected_trade['profit_loss']:,.2f}
+        """
+        st.markdown(trade_info)
+
+        # AI 분석 reasoning 정보 가져오기 (ai_analysis의 trade_id와 매칭)
+        trade_analysis = ai_analysis_df[ai_analysis_df['trade_id'] == selected_trade_id]
+        if not trade_analysis.empty:
+            st.markdown("#### AI Analysis Reasoning")
+            # 여러 건인 경우 첫 번째 건을 표시합니다.
+            analysis_reasoning = trade_analysis.iloc[0]['reasoning']
+            st.write(analysis_reasoning)
+        else:
+            st.info("No AI analysis data available for this trade.")
+    else:
+        st.info("No trades available to select.")
 
 except Exception as e:
     st.error(f"An error occurred: {str(e)}")

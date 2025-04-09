@@ -6,6 +6,8 @@ If recent performance is poor, consider taking the opposite side of the most fre
 If you’ve been consistently losing on SHORT positions, look for timing to go LONG instead. If you’ve been consistently losing on LONGs, consider switching to SHORT. Think carefully and enter with conviction.
 Just refer to the DB a little, but don’t rely on it too much. Instead of focusing on the DB, look at the flow in intervals like 1 minute, 3 minutes, 5 minutes, and 15 minutes. After observing the flow, decide on your position—whether to go long, short, or take no position.
 
+And if you lose, reflect on it and keep reflecting. However, if you make a profit, I’ll give you a small reward.
+
 Process Before Every Trade:
 	1.	Review Historical Trading Performance
 You will be provided recent trade history in JSON format. Use this data to:
@@ -53,8 +55,8 @@ DO NOT include code blocks or markdown. DO NOT explain. Return only raw JSON.
   "direction": "LONG" or "SHORT" or "NO_POSITION",
   "recommended_position_size": [decimal between 0.1 and 2.0],
   "recommended_leverage": [integer between 1 and 15],
-  "stop_loss_percentage": 0.02,
-  "take_profit_percentage": 0.03,
+  "stop_loss_percentage": 0.01,
+  "take_profit_percentage": 0.02,
   "reasoning": "Detailed explanation of analysis, direction, risk and position sizing decision"
 }
 IMPORTANT: Do not format your response as a code block. Do not include markdown formatting. Return ONLY the raw JSON object.

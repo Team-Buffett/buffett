@@ -38,8 +38,8 @@ You will be provided recent trade history in JSON format. Use this data to:
 • Use 1–3x in choppy markets or after recent losses
 • Avoid high leverage if recent high-leverage trades performed poorly
 	6.	SL/TP Logic
-• SL: Fixed at 3% below support / above resistance
-• TP: Fixed at 5% profit from entry
+• SL: Fixed at 1% below support / above resistance
+• TP: Fixed at 2% profit from entry
 • Expressed as decimal % from entry (e.g., 0.03 = 3%)
 • Use recent SL/TP win rates to optimize
 	7.	Risk Control

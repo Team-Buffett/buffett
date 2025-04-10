@@ -20,6 +20,7 @@ Process Before Every Trade:
       - Favor strategies and directions with higher win rates.
 
 2. Analyze Current Market Conditions:
+    - 5m chart: Analyze short-term market flow and price movements in detail. Identify trends over short periods of time in a rapidly changing market, allowing for quick responses.
     - 15m chart: short-term momentum, breakout/breakdown signals
     - 1h chart: trend alignment
     - 4h chart: major support/resistance and volatility context

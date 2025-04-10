@@ -26,7 +26,10 @@ from datetime import datetime  # 날짜 및 시간 처리
 
 load_dotenv("../buffett-config/.env")
 
-with open("coinName.txt", "r", encoding="utf-8") as f:
+os.makedirs("txt", exist_ok=True)
+os.makedirs("db", exist_ok=True)
+
+with open("txt/coinName.txt", "r", encoding="utf-8") as f:
     _coinName = f.read()
 
 # ===== 설정 및 초기화 =====
@@ -51,7 +54,7 @@ client = OpenAI()
 serp_api_key = os.getenv("SERP_API_KEY")  # 서프 API 키
 
 # SQLite 데이터베이스 설정
-DB_FILE = f"{_coinName}_trading.db"  # 데이터베이스 파일명
+DB_FILE = f"db/{_coinName}_trading.db"  # 데이터베이스 파일명
 
 # ===== 데이터베이스 관련 함수 =====
 def setup_database():
@@ -69,7 +72,7 @@ def setup_database():
     table_files = ["create_trades_table.txt", "create_table_ai_analysis.txt"]
 
     for file_name in table_files:
-        with open(file_name, "r", encoding="utf-8") as f:
+        with open(f"txt/{file_name}", "r", encoding="utf-8") as f:
             sql = f.read()
         cursor.executescript(sql)
 
@@ -92,7 +95,7 @@ def save_ai_analysis(analysis_data, trade_id=None):
     cursor = conn.cursor()
 
     # SQL 쿼리를 외부 텍스트 파일에서 불러오기
-    with open("insert_ai_analysis.txt", "r", encoding="utf-8") as f:
+    with open("txt/insert_ai_analysis.txt", "r", encoding="utf-8") as f:
         sql = f.read()
 
     cursor.execute(sql, (
@@ -654,7 +657,7 @@ while True:
 
             # ===== 6. AI 트레이딩 결정 요청 =====
             # AI 분석을 위한 시스템 프롬프트 설정
-            with open("system_prompt.txt", "r", encoding="utf-8") as f:
+            with open("txt/system_prompt.txt", "r", encoding="utf-8") as f:
                 system_prompt = f.read()
 
             # OpenAI API 호출하여 트레이딩 결정 요청

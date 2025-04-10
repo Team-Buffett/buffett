@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import ccxt  # 암호화폐 거래소 API 라이브러리
 import numpy as np
 
-with open("coinName.txt", "r", encoding="utf-8") as f:
+with open("txt/coinName.txt", "r", encoding="utf-8") as f:
     _coinName = f.read()
 
 # 페이지 설정
@@ -80,7 +80,7 @@ st.markdown("""
 # SQLite 데이터베이스에서 데이터를 읽는 함수들
 def get_trades_data():
     # 새로운 연결을 만들어 현재 스레드에서 사용
-    conn = sqlite3.connect(f"{_coinName}_trading.db")
+    conn = sqlite3.connect(f"db/{_coinName}_trading.db")
     query = """
     SELECT 
         id, timestamp, action, entry_price, exit_price, amount, leverage, 
@@ -97,7 +97,7 @@ def get_trades_data():
 
 def get_ai_analysis_data():
     # 새로운 연결을 만들어 현재 스레드에서 사용
-    conn = sqlite3.connect(f"{_coinName}_trading.db")
+    conn = sqlite3.connect(f"db/{_coinName}_trading.db")
     query = """
     SELECT 
         id, timestamp, current_price, direction, 

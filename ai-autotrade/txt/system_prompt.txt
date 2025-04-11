@@ -56,6 +56,20 @@ Process Before Every Trade:
     - Avoid revenge trading or overlapping signals
     - Be stricter if recent win rate < 50%.
 
+You are now focused on high-frequency, aggressive profit-taking strategies using elevated leverage and larger capital allocation per trade.
+
+- Use higher leverage (preferably 10x–15x) to amplify profits in strong setups.
+- Increase position size (use a recommended_position_size between 1.5 and 2.0) to maximize capital efficiency when conviction is strong.
+- To enable more frequent trading opportunities, keep stop_loss_percentage and take_profit_percentage relatively small.
+  - Ideal for quick in-and-out scalping.
+  - SL/TP values should reflect tighter ranges unless extreme volatility is detected.
+- Aim to catch short bursts of directional moves, even in choppy or range-bound conditions.
+- Prioritize setups with high trade frequency and fast feedback cycles.
+- You must still ensure favorable risk/reward and protect from overexposure during false signals or sharp reversals.
+
+Make sure this updated aggressive risk model is used when determining direction, leverage, position size, and SL/TP values.
+
+
 JSON Output Format:
 Respond only with a valid JSON object using exactly the following 6 fields. DO NOT include code blocks or markdown. DO NOT explain. Return only raw JSON.
 

@@ -4,114 +4,81 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
-import ccxt  # 암호화폐 거래소 API 라이브러리
+import ccxt
 import numpy as np
+import os
 
+# 현재 기본 코인명 (파일 기준)
 with open("txt/coinName.txt", "r", encoding="utf-8") as f:
-    _coinName = f.read().strip().replace(" ", "")
+    default_coin = f.read().strip().replace(" ", "")
 
-# 페이지 설정
+# Streamlit 페이지 설정
 st.set_page_config(
-    page_title=f"{_coinName} Trading Dashboard",
+    page_title=f"Trading Dashboard",
     page_icon="📈",
     layout="wide"
 )
 
-# 기본 스타일
+# Coin 리스트 가져오기
+@st.cache_data
+def get_available_coin_names():
+    db_files = [f for f in os.listdir("db") if f.endswith("_trading.db")]
+    return [f.replace("_trading.db", "") for f in db_files]
+
+# --- 사이드바 구성 ---
+st.sidebar.title("⚙️ 대시보드 설정")
+
+available_coins = get_available_coin_names()
+selected_coin = st.sidebar.selectbox("코인 선택:", available_coins, index=available_coins.index(default_coin) if default_coin in available_coins else 0)
+
+# 선택된 코인명 전역 설정
+_coinName = selected_coin
+
+# --- 스타일 ---
 st.markdown("""
 <style>
-    .header {
-        font-size: 2.5rem;
-        color: #FF9900;
-        text-align: center;
-        margin-bottom: 1.5rem;
-    }
-    
-    .metrics-container {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        justify-content: space-between;
-        margin-bottom: 2rem;
-    }
-    
-    .metric-card {
-        background-color: #262730;
-        border-radius: 5px;
-        padding: 1rem;
-        text-align: center;
-        width: calc(25% - 10px);
-        box-sizing: border-box;
-    }
-    
-    .metric-title {
-        font-size: 1rem;
-        color: #888888;
-        margin-bottom: 0.5rem;
-    }
-    
-    .metric-value {
-        font-size: 1.8rem;
-        font-weight: bold;
-        color: #FFFFFF;
-    }
-    
-    .positive {
-        color: #00CC96;
-    }
-    
-    .negative {
-        color: #EF553B;
-    }
-    
-    .neutral {
-        color: #FFD700;
-    }
-    
-    .subheader {
-        font-size: 1.5rem;
-        color: #FF9900;
-        margin-top: 2rem;
-        margin-bottom: 1rem;
-    }
+    .header { font-size: 2.5rem; color: #FF9900; text-align: center; margin-bottom: 1.5rem; }
+    .metrics-container { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; margin-bottom: 2rem; }
+    .metric-card { background-color: #262730; border-radius: 5px; padding: 1rem; text-align: center; width: calc(25% - 10px); box-sizing: border-box; }
+    .metric-title { font-size: 1rem; color: #888888; margin-bottom: 0.5rem; }
+    .metric-value { font-size: 1.8rem; font-weight: bold; color: #FFFFFF; }
+    .positive { color: #00CC96; }
+    .negative { color: #EF553B; }
+    .neutral { color: #FFD700; }
+    .subheader { font-size: 1.5rem; color: #FF9900; margin-top: 2rem; margin-bottom: 1rem; }
 </style>
 """, unsafe_allow_html=True)
 
-# SQLite 데이터베이스에서 데이터를 읽는 함수들
+# 데이터 로딩 함수들
 def get_trades_data():
-    # 새로운 연결을 만들어 현재 스레드에서 사용
     conn = sqlite3.connect(f"db/{_coinName}_trading.db")
     query = """
-    SELECT 
-        id, timestamp, action, entry_price, exit_price, amount, leverage, 
-        status, profit_loss, profit_loss_percentage, exit_timestamp
+    SELECT id, timestamp, action, entry_price, exit_price, amount, leverage,
+           status, profit_loss, profit_loss_percentage, exit_timestamp
     FROM trades
     ORDER BY timestamp DESC
     """
     df = pd.read_sql_query(query, conn)
-    conn.close()  # 연결 닫기
+    conn.close()
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     if 'exit_timestamp' in df.columns:
         df['exit_timestamp'] = pd.to_datetime(df['exit_timestamp'])
     return df
 
 def get_ai_analysis_data():
-    # 새로운 연결을 만들어 현재 스레드에서 사용
     conn = sqlite3.connect(f"db/{_coinName}_trading.db")
     query = """
-    SELECT 
-        id, timestamp, current_price, direction, 
-        recommended_leverage, reasoning, trade_id
+    SELECT id, timestamp, current_price, direction,
+           recommended_leverage, reasoning, trade_id
     FROM ai_analysis
     ORDER BY timestamp DESC
     """
     df = pd.read_sql_query(query, conn)
-    conn.close()  # 연결 닫기
+    conn.close()
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     return df
 
-# 비트코인 가격 데이터 가져오기
-@st.cache_data(ttl=3600)  # 1시간 캐시
+@st.cache_data(ttl=3600)
 def get_Coin_price_data(timeframe='1d', limit=90):
     exchange = ccxt.binance()
     ohlcv = exchange.fetch_ohlcv(f'{_coinName}/USDT', timeframe, limit=limit)

@@ -224,6 +224,7 @@ try:
     ai_analysis_df = get_ai_analysis_data()
     Coin_price_df = get_Coin_price_data()
 
+    st.sidebar.title(f"Currently invested coins are: {default_coin}")
     # 시간 필터
     st.sidebar.title(f"{_coinName} Trading Bot")
     time_filter = st.sidebar.selectbox(

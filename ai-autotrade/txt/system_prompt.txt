@@ -61,7 +61,7 @@ Respond only with a valid JSON object using exactly the following 6 fields. DO N
 
 {
   "direction": "LONG" or "SHORT" or "NO_POSITION",
-  "recommended_position_size": [decimal between 0.1 and 2.0],
+  "recommended_position_size": [decimal between 0.5 and 2.0],
   "recommended_leverage": [integer between 1 and 15],
   "stop_loss_percentage": [dynamically calculated value],
   "take_profit_percentage": [dynamically calculated value],

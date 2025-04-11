@@ -30,7 +30,7 @@ os.makedirs("txt", exist_ok=True)
 os.makedirs("db", exist_ok=True)
 
 with open("txt/coinName.txt", "r", encoding="utf-8") as f:
-    _coinName = f.read().strip()
+    _coinName = f.read().strip().replace(" ", "")
 
 # ===== 설정 및 초기화 =====
 # 바이낸스 API 설정

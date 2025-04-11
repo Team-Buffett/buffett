@@ -8,7 +8,7 @@ import ccxt  # 암호화폐 거래소 API 라이브러리
 import numpy as np
 
 with open("txt/coinName.txt", "r", encoding="utf-8") as f:
-    _coinName = f.read()
+    _coinName = f.read().strip().replace(" ", "")
 
 # 페이지 설정
 st.set_page_config(

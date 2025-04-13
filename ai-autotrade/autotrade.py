@@ -449,9 +449,9 @@ def fetch_multi_timeframe_data():
     """
     # 타임프레임별 데이터 수집 설정
     timeframes = {
-    "1m": {"timeframe": "1m", "limit": 96}    # 1.5시간 (1분 * 96)
-    "5m": {"timeframe": "5m", "limit": 48}    # 4시간 (5분 * 48)
-    "15m": {"timeframe": "15m", "limit": 30},  # 7.5시간 (15분 * 30)
+    "1m": {"timeframe": "1m", "limit": 96},    # 1.5시간 (1분 * 96)
+    "5m": {"timeframe": "5m", "limit": 48},    # 4시간 (5분 * 48)
+    "15m": {"timeframe": "15m", "limit": 30}  # 7.5시간 (15분 * 30)
     }
 
 

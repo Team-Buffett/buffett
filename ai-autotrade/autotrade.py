@@ -436,7 +436,7 @@ def fetch_multi_timeframe_data():
     """
     여러 타임프레임의 가격 데이터를 수집합니다
 
-    각 타임프레임(15분, 1시간, 4시간)에 대해 다음 데이터를 가져옵니다:
+    각 타임프레임(1분, 5분, 15분)에 대해 다음 데이터를 가져옵니다:
     - 날짜/시간
     - 시가
     - 고가
@@ -449,10 +449,9 @@ def fetch_multi_timeframe_data():
     """
     # 타임프레임별 데이터 수집 설정
     timeframes = {
-    "15m": {"timeframe": "15m", "limit": 96},  # 24시간 (15분 * 96)
-    "1h": {"timeframe": "1h", "limit": 48},    # 48시간 (1시간 * 48)
-    "4h": {"timeframe": "4h", "limit": 30},    # 5일 (4시간 * 30)
-    "5m": {"timeframe": "5m", "limit": 288}    # 24시간 (5분 * 288)
+    "1m": {"timeframe": "1m", "limit": 96}    # 1.5시간 (1분 * 96)
+    "5m": {"timeframe": "5m", "limit": 48}    # 4시간 (5분 * 48)
+    "15m": {"timeframe": "15m", "limit": 30},  # 7.5시간 (15분 * 30)
     }
 
 

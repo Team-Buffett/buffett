@@ -48,7 +48,7 @@ exchange = ccxt.binance({
 symbol = f"{_coinName}/USDT"  # 거래 페어 설정
 
 # OpenAI API 클라이언트 초기화
-client = OpenAI(api_key=openai_key)
+client = OpenAI(os.getenv("OPENAI_API_KEY"))
 
 # SERP API 설정 (뉴스 데이터 수집용)
 serp_api_key = os.getenv("SERP_API_KEY")  # 서프 API 키

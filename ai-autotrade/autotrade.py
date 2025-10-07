@@ -34,7 +34,8 @@ def require_env(name: str) -> str:
     if not v:
         raise RuntimeError(f"[ENV] {name} 누락. .env에 {name}=... 을 추가하세요.")
     return v
-
+MIN_HOLD_SEC    = int(os.getenv("MIN_HOLD_SEC", "25"))  # 최소 보유 25초 예시
+NO_POS_STREAK_N = int(os.getenv("NO_POS_STREAK_N", "2"))  # NO_POSITION 2틱 연속 시 청산
 OPENAI_API_KEY   = require_env("OPENAI_API_KEY")
 BINANCE_API_KEY  = require_env("BINANCE_API_KEY")
 BINANCE_SECRET   = require_env("BINANCE_SECRET_KEY")
@@ -544,13 +545,22 @@ def main():
     log(f"Symbol: {SYMBOL}")
 
     last_heavy = 0
+
+    # ✅ 런타임 상태 변수
+    last_entry_time = 0.0
+    last_entry_side = None
+    no_pos_streak   = 0
     while True:
         try:
             now = time.time()
 
             # 재시작 복구
             sync_position_db()
-
+            
+            if last_entry_time == 0:
+                _pos = fetch_current_position()
+                if _pos:
+                    last_entry_time = time.time()
             # 최신가
             ticker = exchange.fetch_ticker(SYMBOL)
             price = float(ticker.get("last") or ticker.get("close") or 0)
@@ -582,19 +592,75 @@ def main():
 
             # === NO_POSITION: 전량 취소/평탄화 후 대기 ===
             if decision["direction"] == "NO_POSITION":
-                log("AI: NO_POSITION → 모든 미체결 취소 및 보유 포지션 평탄화")
+                onpos = fetch_current_position()
+
+                if not onpos:
+                    # 무포지션이면 주문만 정리하고 대기
+                    cancel_all_orders_for_symbol()
+                    no_pos_streak = 0
+                    log("AI: NO_POSITION (보유 없음) → 주문만 정리하고 대기")
+                    time.sleep(ANALYZE_SEC)
+                    continue
+
+                # 보유 중이면: 최소 홀드 확인
+                age = time.time() - (last_entry_time or 0)
+                if age < MIN_HOLD_SEC:
+                    sl_pct = float(decision["stop_loss_percentage"])
+                    tp_pct = float(decision["take_profit_percentage"])
+                    cancel_all_orders_for_symbol()
+
+                    if onpos["side"] == "long":
+                        new_sl_price = price * (1 - sl_pct)
+                        new_tp_price = price * (1 + tp_pct)
+                        dir_for_protect = "LONG"
+                    else:
+                        new_sl_price = price * (1 + sl_pct)
+                        new_tp_price = price * (1 - tp_pct)
+                        dir_for_protect = "SHORT"
+
+                    new_sl_price = float(exchange.price_to_precision(SYMBOL, new_sl_price))
+                    new_tp_price = float(exchange.price_to_precision(SYMBOL, new_tp_price))
+                    place_protective_orders(dir_for_protect, onpos["amount"], new_sl_price, new_tp_price)
+
+                    log(f"AI: NO_POSITION (보유 중, age={age:.1f}s < {MIN_HOLD_SEC}s) → SL/TP만 재설정하고 유지")
+                    time.sleep(TICKER_SEC)
+                    continue
+
+                # 최소 홀드 지난 경우: 연속 NO_POSITION 체크
+                no_pos_streak += 1
+                log(f"AI: NO_POSITION (연속 {no_pos_streak}/{NO_POS_STREAK_N})")
+
+                if no_pos_streak < NO_POS_STREAK_N:
+                    sl_pct = float(decision["stop_loss_percentage"])
+                    tp_pct = float(decision["take_profit_percentage"])
+                    cancel_all_orders_for_symbol()
+                    if onpos["side"] == "long":
+                        new_sl_price = price * (1 - sl_pct)
+                        new_tp_price = price * (1 + tp_pct)
+                        dir_for_protect = "LONG"
+                    else:
+                        new_sl_price = price * (1 + sl_pct)
+                        new_tp_price = price * (1 - tp_pct)
+                        dir_for_protect = "SHORT"
+                    new_sl_price = float(exchange.price_to_precision(SYMBOL, new_sl_price))
+                    new_tp_price = float(exchange.price_to_precision(SYMBOL, new_tp_price))
+                    place_protective_orders(dir_for_protect, onpos["amount"], new_sl_price, new_tp_price)
+
+                    time.sleep(TICKER_SEC)
+                    continue
+
+                # 임계치 도달 → 평탄화
+                log("AI: NO_POSITION 연속 임계 도달 → 모든 미체결 취소 및 보유 포지션 평탄화")
                 cancel_all_orders_for_symbol()
                 flatten_position_if_any()
+                no_pos_streak = 0
                 time.sleep(ANALYZE_SEC)
                 continue
 
             # === 보유 중 로직: 동일 방향이면 SL/TP만 재설정, 반대면 FLIP ===
             onpos = fetch_current_position()
             if onpos:
-                # 1) 기존 보호주문(미체결) 모두 취소
                 cancel_all_orders_for_symbol()
-
-                # 2) 새 SL/TP 계산 (현재 가격 price 사용)
                 sl_pct = float(decision["stop_loss_percentage"])
                 tp_pct = float(decision["take_profit_percentage"])
                 want_long = (decision["direction"] == "LONG")
@@ -606,35 +672,28 @@ def main():
                     new_sl_price = price * (1 + sl_pct)
                     new_tp_price = price * (1 - tp_pct)
 
-                # 정밀도 반영
                 new_sl_price = float(exchange.price_to_precision(SYMBOL, new_sl_price))
                 new_tp_price = float(exchange.price_to_precision(SYMBOL, new_tp_price))
 
-                # 3) 방향 비교
                 same_dir = (onpos["side"] == "long" and want_long) or (onpos["side"] == "short" and not want_long)
-
                 if same_dir:
-                    # 보호주문만 재설정 (reduceOnly)
-                    set_margin_and_leverage(decision["recommended_leverage"])  # 선택 사항
+                    # (선택) 레버리지 재설정
+                    # set_margin_and_leverage(decision["recommended_leverage"])
                     place_protective_orders(decision["direction"], onpos["amount"], new_sl_price, new_tp_price)
                     log(f"보유 중 동일 방향: SL/TP 재설정 완료 (SL={new_sl_price}, TP={new_tp_price})")
                     time.sleep(TICKER_SEC)
                     continue
                 else:
-                    # 반대면 FLIP: 평탄화하여 아래 신규 진입 단계로 진행
                     log("보유 중 반대 방향 신호 → FLIP: 평탄화 후 신규 진입")
                     flatten_position_if_any()
-
-                    # ✅ FLIP 후 포지션 0 확인 대기 (추가)
                     for _ in range(5):
                         if not fetch_current_position():
                             break
                         time.sleep(0.2)
 
-            # === 신규 진입 전 공통: 미체결 취소 → (방향 재확인해 FLIP는 위에서 이미 처리) ===
+            # === 신규 진입 전 공통 정리 ===
             cancel_all_orders_for_symbol()
 
-            # (안전망) 현재 포지션이 또 남아있다면 방향 재확인 후 FLIP
             cur = fetch_current_position()
             want_long = (decision["direction"] == "LONG")
             if cur:
@@ -642,7 +701,6 @@ def main():
                 if is_long != want_long:
                     log("방향 반대(안전망) → 평탄화")
                     flatten_position_if_any()
-                    # ✅ 안전망 FLIP 후 확인 대기 (추가)
                     for _ in range(5):
                         if not fetch_current_position():
                             break
@@ -652,16 +710,17 @@ def main():
             placed = place_orders(decision, price, market)
             if placed:
                 trade_id, entry_price, amount = placed
-                # ai_analysis ↔ trade 연결
                 conn = db_conn(); cur = conn.cursor()
                 cur.execute("UPDATE ai_analysis SET trade_id=? WHERE id=?", (trade_id, analysis_id))
                 conn.commit(); conn.close()
                 log(f"진입 완료: trade_id={trade_id}, entry={entry_price}, amt={amount}")
+
+                last_entry_time = time.time()
+                last_entry_side = decision["direction"]
+                no_pos_streak = 0
             else:
                 log("주문 미체결/스킵")
-
             time.sleep(TICKER_SEC)
-
         except ccxt.BaseError as ex:
             log(f"[CCXT] {type(ex).__name__}: {ex}"); time.sleep(2)
         except Exception as e:

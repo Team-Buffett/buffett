@@ -47,7 +47,7 @@ MAX_LEVERAGE  = int(os.getenv("MAX_LEVERAGE", "15"))
 DAILY_MAX_LOSS_USDT = float(os.getenv("DAILY_MAX_LOSS_USDT", "100"))
 HEDGE_MODE    = os.getenv("HEDGE_MODE", "false").lower() == "true"
 
-TICKER_SEC    = 10
+TICKER_SEC    = 30
 HEAVY_SEC     = 15
 ANALYZE_SEC   = 10
 

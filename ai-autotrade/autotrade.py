@@ -344,30 +344,75 @@ def build_snapshot():
             "timeframes":data, "recent_performance":perf}
 
 def ai_decide(snapshot: Dict[str,Any]) -> Dict[str,Any]:
-    resp = client.chat.completions.create(
-        model=AI_MODEL,
-        response_format={"type":"json_object"},
-        messages=[
-            {"role":"system","content":SYSTEM_PROMPT},
-            {"role":"user","content":json.dumps(snapshot, ensure_ascii=False)}
-        ],
-    )
-    raw = resp.choices[0].message.content
-    d = json.loads(raw)
-    direction = str(d.get("direction","NO_POSITION")).upper()
-    if direction not in ("LONG","SHORT","NO_POSITION"): direction="NO_POSITION"
-    pos_scale = clamp(float(d.get("recommended_position_size", 0.0)), 0.5, 2.0)
-    lev = int(clamp(int(d.get("recommended_leverage", 5)), 1, MAX_LEVERAGE))
-    sl_pct = clamp(float(d.get("stop_loss_percentage", 0.003)), 0.001, 0.05)
-    tp_pct = clamp(float(d.get("take_profit_percentage", 0.006)), 0.002, 0.2)
+    try:
+        resp = client.chat.completions.create(
+            model=AI_MODEL,
+            response_format={"type":"json_object"},
+            messages=[
+                {"role":"system","content":SYSTEM_PROMPT},
+                {"role":"user","content":json.dumps(snapshot, ensure_ascii=False)}
+            ],
+        )
+        raw = resp.choices[0].message.content or "{}"
+        d = json.loads(raw)
+    except Exception as e:
+        log(f"[AI] 응답 파싱 실패 → NO_POSITION로 대체: {e}")
+        d = {}
+
+    # 안전 파싱 + 기본값
+    direction = str((d.get("direction") or "NO_POSITION")).upper()
+    if direction not in ("LONG","SHORT","NO_POSITION"):
+        direction = "NO_POSITION"
+
+    pos_scale = clamp(_to_float(d.get("recommended_position_size"), 1.0), 0.5, 2.0)
+    lev       = int(clamp(_to_int(d.get("recommended_leverage"), 5), 1, MAX_LEVERAGE))
+
+    sl_pct = _to_float(d.get("stop_loss_percentage"), 0.003)
+    tp_pct = _to_float(d.get("take_profit_percentage"), 0.006)
+
+    # 만약 퍼센트를 3(=300%) 같이 보냈다면 1보다 큰 값은 %로 간주해서 보정
+    if sl_pct > 1: sl_pct = sl_pct / 100.0
+    if tp_pct > 1: tp_pct = tp_pct / 100.0
+
+    sl_pct = clamp(sl_pct, 0.001, 0.05)
+    tp_pct = clamp(tp_pct, 0.002, 0.2)
+
     return {
-        "direction":direction,
-        "recommended_position_size":pos_scale,
-        "recommended_leverage":lev,
-        "stop_loss_percentage":sl_pct,
-        "take_profit_percentage":tp_pct,
-        "reasoning": d.get("reasoning","")
+        "direction": direction,
+        "recommended_position_size": pos_scale,
+        "recommended_leverage": lev,
+        "stop_loss_percentage": sl_pct,
+        "take_profit_percentage": tp_pct,
+        "reasoning": d.get("reasoning") or ""
     }
+def _to_float(x, default):
+    """모델 응답의 숫자/문자/None/공백/'0.3%' 등을 안전하게 float으로 변환"""
+    try:
+        if x is None:
+            return default
+        if isinstance(x, str):
+            s = x.strip()
+            if not s:
+                return default
+            s = s.replace('%', '')  # '0.3%' -> '0.3'
+            return float(s)
+        return float(x)
+    except Exception:
+        return default
+
+def _to_int(x, default):
+    """모델 응답의 숫자/문자/None을 안전하게 int로 변환"""
+    try:
+        if x is None:
+            return default
+        if isinstance(x, str):
+            s = x.strip()
+            if not s:
+                return default
+            return int(float(s))
+        return int(x)
+    except Exception:
+        return default
 
 # =========================
 # 포지션/주문
@@ -556,7 +601,7 @@ def main():
 
             # 재시작 복구
             sync_position_db()
-            
+
             if last_entry_time == 0:
                 _pos = fetch_current_position()
                 if _pos:

@@ -281,6 +281,35 @@ def liquidity_ok(symbol: str, max_spread=0.002, min_depth_usdt=2000):
     depth_usdt = min(depth_bid, depth_ask)
     return (spread <= max_spread and depth_usdt >= min_depth_usdt), spread, depth_usdt, best_bid
 
+def cancel_all_orders_for_symbol():
+    """해당 심볼 모든 미체결 주문 취소 (실패해도 다음 단계 진행)"""
+    try:
+        open_orders = exchange.fetch_open_orders(SYMBOL)
+        for o in open_orders:
+            try:
+                exchange.cancel_order(o['id'], SYMBOL)
+            except Exception as e:
+                log(f"주문 취소 실패(무시): {e}")
+    except Exception:
+        pass
+
+def flatten_position_if_any():
+    """보유 포지션이 있으면 시장가로 전량 청산"""
+    try:
+        pos = fetch_current_position()  # 이미 너 코드에 있음
+        if not pos:
+            return False
+        amt = float(pos["amount"])
+        if amt <= 0:
+            return False
+        side = 'sell' if pos["side"]=="long" else 'buy'
+        exchange.create_order(SYMBOL, 'market', side, amt, None, {"reduceOnly": True})
+        log("보유 포지션 평탄화 완료")
+        return True
+    except Exception as e:
+        log(f"평탄화 실패(계속 진행): {e}")
+        return False
+
 # =========================
 # 캔들 스냅샷 → AI 결정
 # =========================
@@ -533,12 +562,10 @@ def main():
                 market = ensure_market()
                 last_heavy = now
 
-            # 포지션 보유 → SL/TP에 맡기고 동기화만
-            if fetch_current_position():
-                close_if_no_position_update_db()
-                time.sleep(TICKER_SEC);  continue
+            # ✅ 보호주문 체결 감지 → DB 닫기 반영 (추가)
+            close_if_no_position_update_db()
 
-            # 분석 → 의사결정
+            # === 분석 → 의사결정 (항상 먼저) ===
             snapshot = build_snapshot()
             decision = ai_decide(snapshot)
 
@@ -553,10 +580,75 @@ def main():
                 "reasoning": decision.get("reasoning","")
             })
 
+            # === NO_POSITION: 전량 취소/평탄화 후 대기 ===
             if decision["direction"] == "NO_POSITION":
-                log("AI: NO_POSITION → 대기")
-                time.sleep(ANALYZE_SEC);  continue
+                log("AI: NO_POSITION → 모든 미체결 취소 및 보유 포지션 평탄화")
+                cancel_all_orders_for_symbol()
+                flatten_position_if_any()
+                time.sleep(ANALYZE_SEC)
+                continue
 
+            # === 보유 중 로직: 동일 방향이면 SL/TP만 재설정, 반대면 FLIP ===
+            onpos = fetch_current_position()
+            if onpos:
+                # 1) 기존 보호주문(미체결) 모두 취소
+                cancel_all_orders_for_symbol()
+
+                # 2) 새 SL/TP 계산 (현재 가격 price 사용)
+                sl_pct = float(decision["stop_loss_percentage"])
+                tp_pct = float(decision["take_profit_percentage"])
+                want_long = (decision["direction"] == "LONG")
+
+                if want_long:
+                    new_sl_price = price * (1 - sl_pct)
+                    new_tp_price = price * (1 + tp_pct)
+                else:
+                    new_sl_price = price * (1 + sl_pct)
+                    new_tp_price = price * (1 - tp_pct)
+
+                # 정밀도 반영
+                new_sl_price = float(exchange.price_to_precision(SYMBOL, new_sl_price))
+                new_tp_price = float(exchange.price_to_precision(SYMBOL, new_tp_price))
+
+                # 3) 방향 비교
+                same_dir = (onpos["side"] == "long" and want_long) or (onpos["side"] == "short" and not want_long)
+
+                if same_dir:
+                    # 보호주문만 재설정 (reduceOnly)
+                    set_margin_and_leverage(decision["recommended_leverage"])  # 선택 사항
+                    place_protective_orders(decision["direction"], onpos["amount"], new_sl_price, new_tp_price)
+                    log(f"보유 중 동일 방향: SL/TP 재설정 완료 (SL={new_sl_price}, TP={new_tp_price})")
+                    time.sleep(TICKER_SEC)
+                    continue
+                else:
+                    # 반대면 FLIP: 평탄화하여 아래 신규 진입 단계로 진행
+                    log("보유 중 반대 방향 신호 → FLIP: 평탄화 후 신규 진입")
+                    flatten_position_if_any()
+
+                    # ✅ FLIP 후 포지션 0 확인 대기 (추가)
+                    for _ in range(5):
+                        if not fetch_current_position():
+                            break
+                        time.sleep(0.2)
+
+            # === 신규 진입 전 공통: 미체결 취소 → (방향 재확인해 FLIP는 위에서 이미 처리) ===
+            cancel_all_orders_for_symbol()
+
+            # (안전망) 현재 포지션이 또 남아있다면 방향 재확인 후 FLIP
+            cur = fetch_current_position()
+            want_long = (decision["direction"] == "LONG")
+            if cur:
+                is_long = (cur["side"] == "long")
+                if is_long != want_long:
+                    log("방향 반대(안전망) → 평탄화")
+                    flatten_position_if_any()
+                    # ✅ 안전망 FLIP 후 확인 대기 (추가)
+                    for _ in range(5):
+                        if not fetch_current_position():
+                            break
+                        time.sleep(0.2)
+
+            # === 신규 진입 실행 ===
             placed = place_orders(decision, price, market)
             if placed:
                 trade_id, entry_price, amount = placed

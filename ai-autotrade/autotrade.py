@@ -34,8 +34,8 @@ def require_env(name: str) -> str:
     if not v:
         raise RuntimeError(f"[ENV] {name} 누락. .env에 {name}=... 을 추가하세요.")
     return v
-MIN_HOLD_SEC    = int(os.getenv("MIN_HOLD_SEC", "25"))  # 최소 보유 25초 예시
-NO_POS_STREAK_N = int(os.getenv("NO_POS_STREAK_N", "2"))  # NO_POSITION 2틱 연속 시 청산
+MIN_HOLD_SEC    = int(os.getenv("MIN_HOLD_SEC", "60"))  # 최소 보유 25초 예시
+NO_POS_STREAK_N = int(os.getenv("NO_POS_STREAK_N", "50"))  # NO_POSITION 2틱 연속 시 청산
 OPENAI_API_KEY   = require_env("OPENAI_API_KEY")
 BINANCE_API_KEY  = require_env("BINANCE_API_KEY")
 BINANCE_SECRET   = require_env("BINANCE_SECRET_KEY")
@@ -495,6 +495,7 @@ def place_orders(decision: Dict[str,Any], price: float, market: Dict[str,Any]):
 
     # 잔고
     bal = exchange.fetch_balance()
+    print(bal["USDT"])
     free = float(bal.get("USDT",{}).get("free",0.0))
 
     # SL/TP 가격

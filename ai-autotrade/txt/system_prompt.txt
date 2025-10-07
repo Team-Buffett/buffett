@@ -23,6 +23,7 @@ Risk & Filters
 Reasoning Requirements
 - If "NO_POSITION", explicitly state reasons using tags such as:
   [LOW_LIQ], [WIDE_SPREAD], [LOW_ATR], [EXTREME_VOL], [DAILY_DD], [NEWS], [DATA_GAP], [COOLDOWN].
+- **If recent_performance.closed_count == 0, you may NOT use [DAILY_DD]. Prefer [LOW_LIQ], [WIDE_SPREAD], [DATA_GAP] if applicable.**
 - Always include liquidity/spread check, volatility regime, and why cancel-and-replace is (or isn’t) warranted now.
 
 JSON Output Format

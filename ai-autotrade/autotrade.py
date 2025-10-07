@@ -624,6 +624,8 @@ def main():
             # === 분석 → 의사결정 (항상 먼저) ===
             snapshot = build_snapshot()
             decision = ai_decide(snapshot)
+            if decision["direction"] == "NO_POSITION":
+                log(f"NO_POSITION 이유: { (decision.get('reasoning') or '')[:180] }")
 
             # 분석 기록 (trade_id는 체결 후 연결)
             analysis_id = save_ai_analysis({

@@ -375,7 +375,7 @@ def ai_decide(snapshot: Dict[str,Any]) -> Dict[str,Any]:
         direction = "NO_POSITION"
 
     pos_scale = clamp(_to_float(d.get("recommended_position_size"), 1.0), 0.5, 2.0)
-    lev       = int(clamp(_to_int(d.get("recommended_leverage"), 5), 1, MAX_LEVERAGE))
+    lev       = int(clamp(_to_float(d.get("recommended_leverage"), 5), 1, MAX_LEVERAGE))
 
     sl_pct = _to_float(d.get("stop_loss_percentage"), 0.003)
     tp_pct = _to_float(d.get("take_profit_percentage"), 0.006)
@@ -451,21 +451,6 @@ def _to_float(x, default):
         return float(x)
     except Exception:
         return default
-
-def _to_int(x, default):
-    """모델 응답의 숫자/문자/None을 안전하게 int로 변환"""
-    try:
-        if x is None:
-            return default
-        if isinstance(x, str):
-            s = x.strip()
-            if not s:
-                return default
-            return int(float(s))
-        return int(x)
-    except Exception:
-        return default
-
 # =========================
 # 포지션/주문
 # =========================
@@ -585,6 +570,23 @@ def place_orders(decision: Dict[str,Any], price: float, market: Dict[str,Any]):
         if notional < min_cost:
             log("최소 주문 금액 미만 → 스킵"); return None
 
+    # === 마진 캡: 가용자금 대비 최대 명목가 제한 ===
+    #   초기마진 ≈ 명목가 / 레버리지, 수수료/버퍼 고려해 80~90% 정도로 캡을 둡니다.
+    margin_cushion = 0.85
+    max_notional_by_margin = free * lev * margin_cushion  # 예: free=20, lev=5 → 85% * 100 = 85 USDT
+    if notional > max_notional_by_margin:
+        capped_amount = max_notional_by_margin / px_entry
+        amount = float(exchange.amount_to_precision(SYMBOL, capped_amount))
+        notional = amount * px_entry
+        if notional < min_cost:
+            log("마진 캡 적용 후 최소주문 미만 → 스킵")
+            return None
+        log(f"마진 캡 적용: amount 조정, notional≈{notional:.2f}USDT (max≈{max_notional_by_margin:.2f}USDT)")
+    
+    if amount <= 0:
+        log("정밀도/캡 적용 후 수량=0 → 스킵")
+        return None
+        
     # 중복진입 방지
     if fetch_current_position():
         log("이미 포지션 보유 중 → 신규 진입 생략")

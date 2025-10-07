@@ -7,6 +7,7 @@
 - 일일 손실 한도(킬스위치) + 중복진입 방지
 - 재시작 복구 (거래소 포지션 ↔ DB 동기화)
 - 정밀도/최소주문/격리/레버리지 설정
+- 모델이 과도하게 NO_POSITION만 내는 경우 작은 사이즈의 Fallback 진입 가드
 """
 
 import os, time, math, json, sqlite3, traceback
@@ -34,15 +35,16 @@ def require_env(name: str) -> str:
     if not v:
         raise RuntimeError(f"[ENV] {name} 누락. .env에 {name}=... 을 추가하세요.")
     return v
-MIN_HOLD_SEC    = int(os.getenv("MIN_HOLD_SEC", "60"))  # 최소 보유 25초 예시
-NO_POS_STREAK_N = int(os.getenv("NO_POS_STREAK_N", "5"))  # NO_POSITION 5틱 연속 시 청산
-OPENAI_API_KEY   = require_env("OPENAI_API_KEY")
-BINANCE_API_KEY  = require_env("BINANCE_API_KEY")
-BINANCE_SECRET   = require_env("BINANCE_SECRET_KEY")
+
+MIN_HOLD_SEC    = int(os.getenv("MIN_HOLD_SEC", "60"))   # 최소 보유
+NO_POS_STREAK_N = int(os.getenv("NO_POS_STREAK_N", "5")) # NO_POSITION N틱 연속 시 청산
+OPENAI_API_KEY  = require_env("OPENAI_API_KEY")
+BINANCE_API_KEY = require_env("BINANCE_API_KEY")
+BINANCE_SECRET  = require_env("BINANCE_SECRET_KEY")
 
 # 파라미터 (필요시 .env에서 조정)
 AI_MODEL      = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-RISK_PCT      = float(os.getenv("RISK_PCT", "0.012"))          # 트레이드당 계좌 리스크 1.2%
+RISK_PCT      = float(os.getenv("RISK_PCT", "0.012"))     # 트레이드당 계좌 리스크 1.2%
 MAX_LEVERAGE  = int(os.getenv("MAX_LEVERAGE", "15"))
 DAILY_MAX_LOSS_USDT = float(os.getenv("DAILY_MAX_LOSS_USDT", "100"))
 HEDGE_MODE    = os.getenv("HEDGE_MODE", "false").lower() == "true"
@@ -58,7 +60,7 @@ if os.path.exists(COIN_NAME_PATH):
 else:
     BASE = "XCN"
 
-SYMBOL = f"{BASE}/USDT:USDT"   # USDT-M Perpetual
+SYMBOL  = f"{BASE}/USDT:USDT"   # USDT-M Perpetual
 DB_FILE = os.path.join(BASE_DIR, "db", f"{BASE.lower()}_trading.db")
 
 # =========================
@@ -297,7 +299,7 @@ def cancel_all_orders_for_symbol():
 def flatten_position_if_any():
     """보유 포지션이 있으면 시장가로 전량 청산"""
     try:
-        pos = fetch_current_position()  # 이미 너 코드에 있음
+        pos = fetch_current_position()
         if not pos:
             return False
         amt = float(pos["amount"])
@@ -324,24 +326,32 @@ def fetch_candles(tf: str, limit=120):
 def build_snapshot():
     data = {}
     for tf in ["1m","3m","5m"]:
-        try: data[tf] = fetch_candles(tf).to_dict(orient="records")
+        try:
+            data[tf] = fetch_candles(tf).to_dict(orient="records")
         except Exception as e:
-            log(f"캔들 수집 실패 {tf}: {e}"); data[tf] = []
+            log(f"캔들 수집 실패 {tf}: {e}")
+            data[tf] = []
     price = float(exchange.fetch_ticker(SYMBOL)["last"])
     # 최근 20개 성과(보조)
     conn = db_conn(); cur = conn.cursor()
     cur.execute("""
         SELECT profit_loss, profit_loss_percentage FROM trades
         WHERE status='CLOSED' ORDER BY timestamp DESC LIMIT 20
-    """); rows = cur.fetchall(); conn.close()
+    """)
+    rows = cur.fetchall(); conn.close()
     perf = {
         "closed_count": len(rows),
         "win_count": sum(1 for r in rows if (r[0] or 0)>0),
         "loss_count": sum(1 for r in rows if (r[0] or 0)<0),
         "avg_pl_pct": (sum((r[1] or 0) for r in rows)/len(rows)) if rows else 0.0
     }
-    return {"timestamp":now_iso(), "symbol":SYMBOL, "current_price":price,
-            "timeframes":data, "recent_performance":perf}
+    return {
+        "timestamp": now_iso(),
+        "symbol": SYMBOL,
+        "current_price": price,
+        "timeframes": data,
+        "recent_performance": perf
+    }
 
 def ai_decide(snapshot: Dict[str,Any]) -> Dict[str,Any]:
     try:
@@ -370,7 +380,7 @@ def ai_decide(snapshot: Dict[str,Any]) -> Dict[str,Any]:
     sl_pct = _to_float(d.get("stop_loss_percentage"), 0.003)
     tp_pct = _to_float(d.get("take_profit_percentage"), 0.006)
 
-    # 만약 퍼센트를 3(=300%) 같이 보냈다면 1보다 큰 값은 %로 간주해서 보정
+    # 1보다 큰 값은 %로 간주해서 보정
     if sl_pct > 1: sl_pct = sl_pct / 100.0
     if tp_pct > 1: tp_pct = tp_pct / 100.0
 
@@ -385,6 +395,48 @@ def ai_decide(snapshot: Dict[str,Any]) -> Dict[str,Any]:
         "take_profit_percentage": tp_pct,
         "reasoning": d.get("reasoning") or ""
     }
+
+def has_enough_data(snap) -> bool:
+    tfs = snap.get("timeframes", {})
+    return all(len(tfs.get(tf, [])) >= 60 for tf in ["1m","3m","5m"])
+
+def fallback_decision_from_snapshot(snap: Dict[str,Any]) -> Dict[str,Any]:
+    """
+    데이터·유동성 정상인데 모델이 NO_POSITION만 내면,
+    아주 작은 크기의 추세 추종 진입으로 안전하게 대체.
+      - 1m 단순 모멘텀: 최근20 평균 위면 LONG, 아니면 SHORT
+      - size 0.6, lev 5, SL 0.35%, TP 0.8% (R:R > 2)
+    """
+    tfs = snap.get("timeframes", {})
+    df1 = pd.DataFrame(tfs.get("1m", []))
+    if df1.empty or "close" not in df1.columns:
+        return {
+            "direction":"NO_POSITION","recommended_position_size":1.0,"recommended_leverage":5,
+            "stop_loss_percentage":0.0035,"take_profit_percentage":0.008,
+            "reasoning":"[DATA_GAP] Fallback failed: no 1m data."
+        }
+
+    closes = df1["close"].astype(float).tail(60).reset_index(drop=True)
+    if len(closes) < 20:
+        return {
+            "direction":"NO_POSITION","recommended_position_size":1.0,"recommended_leverage":5,
+            "stop_loss_percentage":0.0035,"take_profit_percentage":0.008,
+            "reasoning":"[DATA_GAP] Fallback failed: <20 closes."
+        }
+
+    sma20 = closes.tail(20).mean()
+    last  = float(closes.iloc[-1])
+    direction = "LONG" if last > sma20 else "SHORT"
+
+    return {
+        "direction": direction,
+        "recommended_position_size": 0.6,
+        "recommended_leverage": 5,
+        "stop_loss_percentage": 0.0035,
+        "take_profit_percentage": 0.008,
+        "reasoning": f"[FALLBACK] simple-1m-momentum last={last:.6f} vs sma20={sma20:.6f}; enter small size with RR>2."
+    }
+
 def _to_float(x, default):
     """모델 응답의 숫자/문자/None/공백/'0.3%' 등을 안전하게 float으로 변환"""
     try:
@@ -495,7 +547,7 @@ def place_orders(decision: Dict[str,Any], price: float, market: Dict[str,Any]):
 
     # 잔고
     bal = exchange.fetch_balance()
-    print(bal["USDT"])
+    print(bal.get("USDT"))
     free = float(bal.get("USDT",{}).get("free",0.0))
 
     # SL/TP 가격
@@ -607,6 +659,7 @@ def main():
                 _pos = fetch_current_position()
                 if _pos:
                     last_entry_time = time.time()
+
             # 최신가
             ticker = exchange.fetch_ticker(SYMBOL)
             price = float(ticker.get("last") or ticker.get("close") or 0)
@@ -618,14 +671,39 @@ def main():
                 market = ensure_market()
                 last_heavy = now
 
-            # ✅ 보호주문 체결 감지 → DB 닫기 반영 (추가)
+            # ✅ 보호주문 체결 감지 → DB 닫기 반영
             close_if_no_position_update_db()
+
+            # === 오더북 체크(프롬프트/로그용) ===
+            liq_ok, spread, depth_usdt, best_bid = liquidity_ok(SYMBOL, max_spread=0.002, min_depth_usdt=2000)
+            log(f"OB check → ok={liq_ok}, spread={spread:.4%}, depth≈{int(depth_usdt)} USDT")
 
             # === 분석 → 의사결정 (항상 먼저) ===
             snapshot = build_snapshot()
+            snapshot["orderbook"] = {
+                "ok": bool(liq_ok),
+                "spread": float(spread),
+                "depth_usdt": float(depth_usdt),
+            }
             decision = ai_decide(snapshot)
+
+            # ---- Fallback Guard: 모델이 근거 없이 NO_POSITION만 내면 소형 추세추종 진입으로 대체
+            ob = snapshot.get("orderbook", {})
+            liq_ok_flag = bool(ob.get("ok", False))
+            data_ok = has_enough_data(snapshot)
+            dd_ok = today_realized_pnl() > -DAILY_MAX_LOSS_USDT  # 일일 손실 한도 미도달
+
             if decision["direction"] == "NO_POSITION":
-                log(f"NO_POSITION 이유: { (decision.get('reasoning') or '')[:180] }")
+                if liq_ok_flag and data_ok and dd_ok:
+                    fb = fallback_decision_from_snapshot(snapshot)
+                    if fb["direction"] != "NO_POSITION":
+                        log(f"[GUARD] Model said NO_POSITION, but conditions look fine → using fallback: {fb['direction']} (small size)")
+                        decision = fb
+                    else:
+                        log("[GUARD] Fallback도 NO_POSITION → 그대로 대기")
+                else:
+                    # 진짜로 무진입이어야 하는 상황이면 이유 로그
+                    log(f"NO_POSITION 이유: { (decision.get('reasoning') or '')[:180] }")
 
             # 분석 기록 (trade_id는 체결 후 연결)
             analysis_id = save_ai_analysis({
@@ -643,7 +721,6 @@ def main():
                 onpos = fetch_current_position()
 
                 if not onpos:
-                    # 무포지션이면 주문만 정리하고 대기
                     cancel_all_orders_for_symbol()
                     no_pos_streak = 0
                     log("AI: NO_POSITION (보유 없음) → 주문만 정리하고 대기")
@@ -725,8 +802,7 @@ def main():
 
                 same_dir = (onpos["side"] == "long" and want_long) or (onpos["side"] == "short" and not want_long)
                 if same_dir:
-                    # (선택) 레버리지 재설정
-                    # set_margin_and_leverage(decision["recommended_leverage"])
+                    # set_margin_and_leverage(decision["recommended_leverage"])  # 필요시
                     place_protective_orders(decision["direction"], onpos["amount"], new_sl_price, new_tp_price)
                     log(f"보유 중 동일 방향: SL/TP 재설정 완료 (SL={new_sl_price}, TP={new_tp_price})")
                     time.sleep(TICKER_SEC)
@@ -768,7 +844,9 @@ def main():
                 no_pos_streak = 0
             else:
                 log("주문 미체결/스킵")
+
             time.sleep(TICKER_SEC)
+
         except ccxt.BaseError as ex:
             log(f"[CCXT] {type(ex).__name__}: {ex}"); time.sleep(2)
         except Exception as e:

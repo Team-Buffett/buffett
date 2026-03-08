@@ -10,7 +10,7 @@
 - 모델이 과도하게 NO_POSITION만 내는 경우 작은 사이즈의 Fallback 진입 가드
 """
 
-import os, time, math, json, sqlite3, traceback
+import os, time, json, sqlite3, traceback
 from datetime import datetime
 from typing import Dict, Any
 
@@ -44,10 +44,15 @@ BINANCE_SECRET  = require_env("BINANCE_SECRET_KEY")
 
 # 파라미터 (필요시 .env에서 조정)
 AI_MODEL      = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-RISK_PCT      = float(os.getenv("RISK_PCT", "0.012"))     # 트레이드당 계좌 리스크 1.2%
-MAX_LEVERAGE  = int(os.getenv("MAX_LEVERAGE", "15"))
+RISK_PCT      = float(os.getenv("RISK_PCT", "0.004"))     # 트레이드당 계좌 리스크 0.4%
+MAX_LEVERAGE  = int(os.getenv("MAX_LEVERAGE", "8"))
 DAILY_MAX_LOSS_USDT = float(os.getenv("DAILY_MAX_LOSS_USDT", "100"))
 HEDGE_MODE    = os.getenv("HEDGE_MODE", "false").lower() == "true"
+ENABLE_FALLBACK = os.getenv("ENABLE_FALLBACK", "false").lower() == "true"
+MIN_RR = float(os.getenv("MIN_RR", "1.8"))
+MAX_NOTIONAL_FRAC = float(os.getenv("MAX_NOTIONAL_FRAC", "0.35"))
+MAX_CONSEC_LOSSES = int(os.getenv("MAX_CONSEC_LOSSES", "3"))
+COOLDOWN_SEC_AFTER_LOSS_STREAK = int(os.getenv("COOLDOWN_SEC_AFTER_LOSS_STREAK", "1800"))
 
 TICKER_SEC    = 30
 HEAVY_SEC     = 15
@@ -72,6 +77,8 @@ if os.path.exists(SP_PATH):
 else:
     SYSTEM_PROMPT = """You are the world’s top high-frequency crypto scalper, specializing in XCN/USDT perpetual futures trading on Binance using the ChatGPT API.
 Use 1m/3m/5m momentum. Output JSON with fields: direction, recommended_position_size, recommended_leverage, stop_loss_percentage, take_profit_percentage, reasoning."""
+
+SYSTEM_PROMPT = SYSTEM_PROMPT.replace("DOGE/USDT", f"{BASE}/USDT")
 
 # =========================
 # 클라이언트/거래소
@@ -253,6 +260,26 @@ def today_realized_pnl() -> float:
     v = float(cur.fetchone()[0] or 0.0)
     conn.close()
     return v
+
+def get_recent_consecutive_losses(limit: int = 10) -> int:
+    conn = db_conn(); cur = conn.cursor()
+    cur.execute("""
+        SELECT profit_loss
+        FROM trades
+        WHERE status='CLOSED' AND profit_loss IS NOT NULL
+        ORDER BY exit_timestamp DESC, id DESC
+        LIMIT ?
+    """, (limit,))
+    rows = cur.fetchall()
+    conn.close()
+
+    streak = 0
+    for (pl,) in rows:
+        if float(pl or 0.0) < 0:
+            streak += 1
+        else:
+            break
+    return streak
 
 # =========================
 # 마켓/정밀도/유동성
@@ -549,11 +576,15 @@ def place_orders(decision: Dict[str,Any], price: float, market: Dict[str,Any]):
     stop_distance_pct = stop_distance / price
     if stop_distance_pct <= 0:
         log("SL 계산 오류 → 스킵"); return None
+    rr = tp_pct / max(sl_pct, 1e-9)
+    if rr < MIN_RR:
+        log(f"RR 부족(rr={rr:.2f} < {MIN_RR:.2f}) → 스킵")
+        return None
 
     # === SL 거리 기반 포지션 사이징 ===
     # 위험금액 = Equity * RISK_PCT * AI스케일 (0.5~2.0)
     ai_scale = float(decision["recommended_position_size"])
-    risk_amount = free * clamp(RISK_PCT * ai_scale, 0.005, 0.03)  # 0.5%~3% 사이
+    risk_amount = free * clamp(RISK_PCT * ai_scale, 0.001, 0.01)  # 0.1%~1.0% 사이
     # 수량 = (위험금액 / (stop_distance_pct * price)) * 레버리지
     raw_amount = (risk_amount / (stop_distance_pct * price)) * lev
 
@@ -572,7 +603,7 @@ def place_orders(decision: Dict[str,Any], price: float, market: Dict[str,Any]):
 
     # === 마진 캡: 가용자금 대비 최대 명목가 제한 ===
     #   초기마진 ≈ 명목가 / 레버리지, 수수료/버퍼 고려해 80~90% 정도로 캡을 둡니다.
-    margin_cushion = 0.85
+    margin_cushion = clamp(MAX_NOTIONAL_FRAC, 0.1, 0.9)
     max_notional_by_margin = free * lev * margin_cushion  # 예: free=20, lev=5 → 85% * 100 = 85 USDT
     if notional > max_notional_by_margin:
         capped_amount = max_notional_by_margin / px_entry
@@ -650,6 +681,7 @@ def main():
     last_entry_time = 0.0
     last_entry_side = None
     no_pos_streak   = 0
+    cooldown_until = 0.0
     while True:
         try:
             now = time.time()
@@ -689,13 +721,19 @@ def main():
             }
             decision = ai_decide(snapshot)
 
+            if time.time() < cooldown_until and decision["direction"] != "NO_POSITION":
+                remaining = int(cooldown_until - time.time())
+                log(f"[COOLDOWN] 연속 손실 보호 중({remaining}s 남음) → NO_POSITION으로 강제")
+                decision["direction"] = "NO_POSITION"
+                decision["reasoning"] = f"{decision.get('reasoning','')} [COOLDOWN_ACTIVE]"
+
             # ---- Fallback Guard: 모델이 근거 없이 NO_POSITION만 내면 소형 추세추종 진입으로 대체
             ob = snapshot.get("orderbook", {})
             liq_ok_flag = bool(ob.get("ok", False))
             data_ok = has_enough_data(snapshot)
             dd_ok = today_realized_pnl() > -DAILY_MAX_LOSS_USDT  # 일일 손실 한도 미도달
 
-            if decision["direction"] == "NO_POSITION":
+            if ENABLE_FALLBACK and decision["direction"] == "NO_POSITION":
                 if liq_ok_flag and data_ok and dd_ok:
                     fb = fallback_decision_from_snapshot(snapshot)
                     if fb["direction"] != "NO_POSITION":
@@ -706,6 +744,8 @@ def main():
                 else:
                     # 진짜로 무진입이어야 하는 상황이면 이유 로그
                     log(f"NO_POSITION 이유: { (decision.get('reasoning') or '')[:180] }")
+            elif decision["direction"] == "NO_POSITION":
+                log(f"NO_POSITION 이유: { (decision.get('reasoning') or '')[:180] }")
 
             # 분석 기록 (trade_id는 체결 후 연결)
             analysis_id = save_ai_analysis({
@@ -833,6 +873,13 @@ def main():
                         time.sleep(0.2)
 
             # === 신규 진입 실행 ===
+            loss_streak = get_recent_consecutive_losses(limit=max(5, MAX_CONSEC_LOSSES + 2))
+            if loss_streak >= MAX_CONSEC_LOSSES:
+                cooldown_until = max(cooldown_until, time.time() + COOLDOWN_SEC_AFTER_LOSS_STREAK)
+                log(f"[RISK] 최근 연속 손실 {loss_streak}회 → {COOLDOWN_SEC_AFTER_LOSS_STREAK}s 쿨다운")
+                time.sleep(ANALYZE_SEC)
+                continue
+
             placed = place_orders(decision, price, market)
             if placed:
                 trade_id, entry_price, amount = placed

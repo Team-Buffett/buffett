@@ -17,13 +17,13 @@ def now():
 
 
 def parse_coins():
-    raw = os.getenv("TRADING_COINS", "BTC,ETH,XRP,SOL,DOGE")
+    raw = os.getenv("TRADING_COINS", "BTC,XRP")
     coins = []
     for c in raw.split(","):
         cc = c.strip().upper()
         if cc and cc not in coins:
             coins.append(cc)
-    return coins[:5]
+    return coins[:2]
 
 
 def spawn_bot(coin):
@@ -57,7 +57,7 @@ def stop_bot(bot):
 def main():
     coins = parse_coins()
     if not coins:
-        raise RuntimeError("No coins configured. Set TRADING_COINS, e.g. BTC,ETH,XRP,SOL,DOGE")
+        raise RuntimeError("No coins configured. Set TRADING_COINS, e.g. BTC,XRP")
 
     print(f"[{now()}] multi bot start coins={coins}", flush=True)
     bots = {coin: spawn_bot(coin) for coin in coins}

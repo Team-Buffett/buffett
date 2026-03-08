@@ -238,6 +238,26 @@ def update_trade_status(trade_id: int, status: str, exit_price=None, exit_timest
     cur.execute(sql, vals)
     conn.commit(); conn.close()
 
+def update_open_trade_levels(sl_price: float, tp_price: float, sl_pct: float = None, tp_pct: float = None):
+    conn = db_conn(); cur = conn.cursor()
+    fields, vals = ["sl_price = ?", "tp_price = ?"], [sl_price, tp_price]
+    if sl_pct is not None:
+        fields.append("sl_percentage = ?"); vals.append(sl_pct)
+    if tp_pct is not None:
+        fields.append("tp_percentage = ?"); vals.append(tp_pct)
+    vals.append("OPEN")
+    cur.execute(f"""
+        UPDATE trades
+        SET {", ".join(fields)}
+        WHERE id = (
+            SELECT id FROM trades
+            WHERE status = ?
+            ORDER BY timestamp DESC
+            LIMIT 1
+        )
+    """, vals)
+    conn.commit(); conn.close()
+
 def get_latest_open_trade():
     conn = db_conn(); cur = conn.cursor()
     cur.execute("""
@@ -534,14 +554,49 @@ def place_protective_orders(direction: str, amount: float, sl_price: float, tp_p
             break
         except Exception as e:
             log(f"SL 주문 실패 재시도({i+1}/3): {e}"); time.sleep(1)
-            if i==2: raise
+            if i==2:
+                return False
     for i in range(3):
         try:
             exchange.create_order(SYMBOL, 'TAKE_PROFIT_MARKET', side_tp, amount, None, params(tp_price))
             break
         except Exception as e:
             log(f"TP 주문 실패 재시도({i+1}/3): {e}"); time.sleep(1)
-            if i==2: raise
+            if i==2:
+                return False
+    return True
+
+def enforce_local_sl_tp(price: float):
+    """
+    거래소 조건부 주문이 불가능한 계정에서도 동작하도록
+    DB의 OPEN 포지션 SL/TP를 로컬에서 감시해 시장가 청산.
+    """
+    t = get_latest_open_trade()
+    p = fetch_current_position()
+    if not t or not p:
+        return
+
+    sl = float(t.get("sl_price") or 0.0)
+    tp = float(t.get("tp_price") or 0.0)
+    if sl <= 0 or tp <= 0:
+        return
+
+    action = str(t.get("action") or "").lower()
+    hit = None
+    if action == "long":
+        if price <= sl:
+            hit = "SL(local)"
+        elif price >= tp:
+            hit = "TP(local)"
+    elif action == "short":
+        if price >= sl:
+            hit = "SL(local)"
+        elif price <= tp:
+            hit = "TP(local)"
+
+    if hit:
+        log(f"[LOCAL EXIT] {hit} 충족 → 시장가 청산 시도")
+        flatten_position_if_any()
 
 def place_orders(decision: Dict[str,Any], price: float, market: Dict[str,Any]):
     # 킬스위치
@@ -638,7 +693,9 @@ def place_orders(decision: Dict[str,Any], price: float, market: Dict[str,Any]):
     # 보호주문(재시도 포함)
     sl_price = float(exchange.price_to_precision(SYMBOL, sl_price))
     tp_price = float(exchange.price_to_precision(SYMBOL, tp_price))
-    place_protective_orders(decision["direction"], amount, sl_price, tp_price)
+    protected = place_protective_orders(decision["direction"], amount, sl_price, tp_price)
+    if not protected:
+        log("[WARN] 거래소 보호주문 생성 실패. 로컬 SL/TP 감시 모드로 운영")
 
     # DB 저장
     trade_id = save_trade({
@@ -699,6 +756,9 @@ def main():
             price = float(ticker.get("last") or ticker.get("close") or 0)
             if price <= 0:
                 time.sleep(TICKER_SEC);  continue
+
+            # 보호주문 미지원 계정 대응: 로컬 SL/TP 강제청산
+            enforce_local_sl_tp(price)
 
             # 주기적 마켓정보 갱신
             if now - last_heavy > HEAVY_SEC:
@@ -787,7 +847,10 @@ def main():
 
                     new_sl_price = float(exchange.price_to_precision(SYMBOL, new_sl_price))
                     new_tp_price = float(exchange.price_to_precision(SYMBOL, new_tp_price))
-                    place_protective_orders(dir_for_protect, onpos["amount"], new_sl_price, new_tp_price)
+                    ok_protect = place_protective_orders(dir_for_protect, onpos["amount"], new_sl_price, new_tp_price)
+                    if not ok_protect:
+                        log("[WARN] 보호주문 재설정 실패. 로컬 SL/TP 감시 계속")
+                    update_open_trade_levels(new_sl_price, new_tp_price, sl_pct, tp_pct)
 
                     log(f"AI: NO_POSITION (보유 중, age={age:.1f}s < {MIN_HOLD_SEC}s) → SL/TP만 재설정하고 유지")
                     time.sleep(TICKER_SEC)
@@ -811,7 +874,10 @@ def main():
                         dir_for_protect = "SHORT"
                     new_sl_price = float(exchange.price_to_precision(SYMBOL, new_sl_price))
                     new_tp_price = float(exchange.price_to_precision(SYMBOL, new_tp_price))
-                    place_protective_orders(dir_for_protect, onpos["amount"], new_sl_price, new_tp_price)
+                    ok_protect = place_protective_orders(dir_for_protect, onpos["amount"], new_sl_price, new_tp_price)
+                    if not ok_protect:
+                        log("[WARN] 보호주문 재설정 실패. 로컬 SL/TP 감시 계속")
+                    update_open_trade_levels(new_sl_price, new_tp_price, sl_pct, tp_pct)
 
                     time.sleep(TICKER_SEC)
                     continue
@@ -845,7 +911,10 @@ def main():
                 same_dir = (onpos["side"] == "long" and want_long) or (onpos["side"] == "short" and not want_long)
                 if same_dir:
                     # set_margin_and_leverage(decision["recommended_leverage"])  # 필요시
-                    place_protective_orders(decision["direction"], onpos["amount"], new_sl_price, new_tp_price)
+                    ok_protect = place_protective_orders(decision["direction"], onpos["amount"], new_sl_price, new_tp_price)
+                    if not ok_protect:
+                        log("[WARN] 보호주문 재설정 실패. 로컬 SL/TP 감시 계속")
+                    update_open_trade_levels(new_sl_price, new_tp_price, sl_pct, tp_pct)
                     log(f"보유 중 동일 방향: SL/TP 재설정 완료 (SL={new_sl_price}, TP={new_tp_price})")
                     time.sleep(TICKER_SEC)
                     continue

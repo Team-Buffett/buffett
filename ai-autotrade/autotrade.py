@@ -55,10 +55,10 @@ MAX_CONSEC_LOSSES = int(os.getenv("MAX_CONSEC_LOSSES", "3"))
 COOLDOWN_SEC_AFTER_LOSS_STREAK = int(os.getenv("COOLDOWN_SEC_AFTER_LOSS_STREAK", "1800"))
 ALGO_ORDER_UNSUPPORTED = False
 
-TICKER_SEC    = 30
-POSITION_TICKER_SEC = int(os.getenv("POSITION_TICKER_SEC", "60"))
+TICKER_SEC    = int(os.getenv("TICKER_SEC", "240"))
+POSITION_TICKER_SEC = int(os.getenv("POSITION_TICKER_SEC", "300"))
 HEAVY_SEC     = 15
-ANALYZE_SEC   = 10
+ANALYZE_SEC   = int(os.getenv("ANALYZE_SEC", "60"))
 
 # 코인명
 COIN_NAME_PATH = os.path.join(BASE_DIR, "txt", "coinName.txt")
@@ -120,6 +120,12 @@ def log(msg):
 
 def loop_wait_seconds() -> int:
     return POSITION_TICKER_SEC if fetch_current_position() else TICKER_SEC
+
+def idle_no_position_wait_seconds(idle_streak: int) -> int:
+    # 무포지션이 길어질수록 호출 빈도를 줄여 API 비용을 절감
+    base = max(10, TICKER_SEC)
+    backoff = min(240, max(0, idle_streak) * 30)
+    return base + backoff
 
 # =========================
 # DB
@@ -783,6 +789,7 @@ def main():
     last_entry_side = None
     no_pos_streak   = 0
     cooldown_until = 0.0
+    idle_no_pos_streak = 0
     while True:
         try:
             now = time.time()
@@ -869,8 +876,11 @@ def main():
                 if not onpos:
                     cancel_all_orders_for_symbol()
                     no_pos_streak = 0
+                    idle_no_pos_streak += 1
                     log("AI: NO_POSITION (보유 없음) → 주문만 정리하고 대기")
-                    time.sleep(ANALYZE_SEC)
+                    wait_sec = idle_no_position_wait_seconds(idle_no_pos_streak)
+                    log(f"[COST] 무포지션 연속 {idle_no_pos_streak}회 → 대기 {wait_sec}s")
+                    time.sleep(wait_sec)
                     continue
 
                 # 보유 중이면: 최소 홀드 확인
@@ -1004,6 +1014,7 @@ def main():
                 last_entry_time = time.time()
                 last_entry_side = decision["direction"]
                 no_pos_streak = 0
+                idle_no_pos_streak = 0
             else:
                 log("주문 미체결/스킵")
 

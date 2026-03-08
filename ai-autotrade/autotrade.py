@@ -427,25 +427,11 @@ def build_snapshot():
             log(f"캔들 수집 실패 {tf}: {e}")
             data[tf] = []
     price = float(exchange.fetch_ticker(SYMBOL)["last"])
-    # 최근 20개 성과(보조)
-    conn = db_conn(); cur = conn.cursor()
-    cur.execute("""
-        SELECT profit_loss, profit_loss_percentage FROM trades
-        WHERE status='CLOSED' ORDER BY timestamp DESC LIMIT 20
-    """)
-    rows = cur.fetchall(); conn.close()
-    perf = {
-        "closed_count": len(rows),
-        "win_count": sum(1 for r in rows if (r[0] or 0)>0),
-        "loss_count": sum(1 for r in rows if (r[0] or 0)<0),
-        "avg_pl_pct": (sum((r[1] or 0) for r in rows)/len(rows)) if rows else 0.0
-    }
     return {
         "timestamp": now_iso(),
         "symbol": SYMBOL,
         "current_price": price,
-        "timeframes": data,
-        "recent_performance": perf
+        "timeframes": data
     }
 
 def ai_decide(snapshot: Dict[str,Any]) -> Dict[str,Any]:

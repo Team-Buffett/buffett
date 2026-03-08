@@ -33,8 +33,8 @@ def get_db_connection(coin_name: str):
 
 # --- 사이드바 구성 ---
 st.sidebar.title("⚙️ 대시보드 설정")
-auto_refresh = st.sidebar.checkbox("자동 새로고침 (5초)", value=True)
-refresh_interval_sec = 5
+auto_refresh = st.sidebar.checkbox("자동 새로고침 (30초)", value=True)
+refresh_interval_sec = 30
 
 available_coins = get_available_coin_names()
 coin_options = ["ALL (XRP+ETH)"] + available_coins

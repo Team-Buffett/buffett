@@ -68,7 +68,14 @@ def get_trades_data(coin_name):
     FROM trades
     ORDER BY timestamp DESC
     """
-    df = pd.read_sql_query(query, conn)
+    try:
+        df = pd.read_sql_query(query, conn)
+    except Exception:
+        conn.close()
+        return pd.DataFrame(columns=[
+            'id', 'timestamp', 'action', 'entry_price', 'exit_price', 'amount',
+            'leverage', 'status', 'profit_loss', 'profit_loss_percentage', 'exit_timestamp'
+        ])
     conn.close()
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     if 'exit_timestamp' in df.columns:
@@ -83,7 +90,14 @@ def get_ai_analysis_data(coin_name):
     FROM ai_analysis
     ORDER BY timestamp DESC
     """
-    df = pd.read_sql_query(query, conn)
+    try:
+        df = pd.read_sql_query(query, conn)
+    except Exception:
+        conn.close()
+        return pd.DataFrame(columns=[
+            'id', 'timestamp', 'current_price', 'direction',
+            'recommended_leverage', 'reasoning', 'trade_id'
+        ])
     conn.close()
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     return df

@@ -17,8 +17,8 @@ def now():
 
 
 def parse_coins():
-    # 운영 정책: 코인 고정 (XRP, ETH)
-    return ["XRP", "ETH"]
+    # 운영 정책: 코인 고정 (XRP only)
+    return ["XRP"]
 
 
 def spawn_bot(coin):

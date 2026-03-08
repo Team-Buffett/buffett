@@ -70,7 +70,13 @@ if not BASE:
         BASE = "XCN"
 
 SYMBOL  = f"{BASE}/USDT:USDT"   # USDT-M Perpetual
-DB_FILE = os.path.join(BASE_DIR, "db", f"{BASE.lower()}_trading.db")
+DB_FILE = os.path.join(BASE_DIR, "db", f"{BASE}_trading.db")
+LEGACY_DB_FILE = os.path.join(BASE_DIR, "db", f"{BASE.lower()}_trading.db")
+if not os.path.exists(DB_FILE) and os.path.exists(LEGACY_DB_FILE):
+    try:
+        os.replace(LEGACY_DB_FILE, DB_FILE)
+    except Exception:
+        DB_FILE = LEGACY_DB_FILE
 
 # =========================
 # 프롬프트 로드
@@ -123,6 +129,41 @@ def db_conn():
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("PRAGMA synchronous=NORMAL;")
     conn.execute("PRAGMA foreign_keys=ON;")
+    # DB 파일 전환(legacy -> new) 직후에도 핵심 테이블이 항상 존재하도록 보장
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS trades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            action TEXT NOT NULL,
+            entry_price REAL NOT NULL,
+            amount REAL NOT NULL,
+            leverage INTEGER NOT NULL,
+            sl_price REAL NOT NULL,
+            tp_price REAL NOT NULL,
+            sl_percentage REAL NOT NULL,
+            tp_percentage REAL NOT NULL,
+            position_size_percentage REAL NOT NULL,
+            investment_amount REAL NOT NULL,
+            status TEXT DEFAULT 'OPEN',
+            exit_price REAL,
+            exit_timestamp TEXT,
+            profit_loss REAL,
+            profit_loss_percentage REAL
+        );
+        CREATE TABLE IF NOT EXISTS ai_analysis (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            current_price REAL NOT NULL,
+            direction TEXT NOT NULL,
+            recommended_position_size REAL NOT NULL,
+            recommended_leverage INTEGER NOT NULL,
+            stop_loss_percentage REAL NOT NULL,
+            take_profit_percentage REAL NOT NULL,
+            reasoning TEXT NOT NULL,
+            trade_id INTEGER,
+            FOREIGN KEY (trade_id) REFERENCES trades (id)
+        );
+    """)
     return conn
 
 def read_text(path: str) -> str:

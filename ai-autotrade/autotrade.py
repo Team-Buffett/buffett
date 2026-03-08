@@ -49,10 +49,11 @@ MAX_LEVERAGE  = int(os.getenv("MAX_LEVERAGE", "8"))
 DAILY_MAX_LOSS_USDT = float(os.getenv("DAILY_MAX_LOSS_USDT", "100"))
 HEDGE_MODE    = os.getenv("HEDGE_MODE", "false").lower() == "true"
 ENABLE_FALLBACK = os.getenv("ENABLE_FALLBACK", "false").lower() == "true"
-MIN_RR = float(os.getenv("MIN_RR", "1.8"))
+MIN_RR = float(os.getenv("MIN_RR", "1.5"))
 MAX_NOTIONAL_FRAC = float(os.getenv("MAX_NOTIONAL_FRAC", "0.35"))
 MAX_CONSEC_LOSSES = int(os.getenv("MAX_CONSEC_LOSSES", "3"))
 COOLDOWN_SEC_AFTER_LOSS_STREAK = int(os.getenv("COOLDOWN_SEC_AFTER_LOSS_STREAK", "1800"))
+ALGO_ORDER_UNSUPPORTED = False
 
 TICKER_SEC    = 30
 HEAVY_SEC     = 15
@@ -537,6 +538,10 @@ def sync_position_db():
         log("무포지션 동기화: DB 포지션 종결")
 
 def place_protective_orders(direction: str, amount: float, sl_price: float, tp_price: float):
+    global ALGO_ORDER_UNSUPPORTED
+    if ALGO_ORDER_UNSUPPORTED:
+        return False
+
     # reduceOnly 보호주문 + 재시도
     side_sl = 'sell' if direction=="LONG" else 'buy'
     side_tp = side_sl
@@ -555,6 +560,9 @@ def place_protective_orders(direction: str, amount: float, sl_price: float, tp_p
         except Exception as e:
             log(f"SL 주문 실패 재시도({i+1}/3): {e}"); time.sleep(1)
             if i==2:
+                if "code\":-4120" in str(e) or "Algo Order API" in str(e):
+                    ALGO_ORDER_UNSUPPORTED = True
+                    log("[INFO] 이 계정은 기본 엔드포인트의 조건부 주문 미지원으로 감지됨. 이후 보호주문 재시도 생략")
                 return False
     for i in range(3):
         try:
@@ -563,6 +571,9 @@ def place_protective_orders(direction: str, amount: float, sl_price: float, tp_p
         except Exception as e:
             log(f"TP 주문 실패 재시도({i+1}/3): {e}"); time.sleep(1)
             if i==2:
+                if "code\":-4120" in str(e) or "Algo Order API" in str(e):
+                    ALGO_ORDER_UNSUPPORTED = True
+                    log("[INFO] 이 계정은 기본 엔드포인트의 조건부 주문 미지원으로 감지됨. 이후 보호주문 재시도 생략")
                 return False
     return True
 
@@ -632,7 +643,7 @@ def place_orders(decision: Dict[str,Any], price: float, market: Dict[str,Any]):
     if stop_distance_pct <= 0:
         log("SL 계산 오류 → 스킵"); return None
     rr = tp_pct / max(sl_pct, 1e-9)
-    if rr < MIN_RR:
+    if rr + 1e-6 < MIN_RR:
         log(f"RR 부족(rr={rr:.2f} < {MIN_RR:.2f}) → 스킵")
         return None
 

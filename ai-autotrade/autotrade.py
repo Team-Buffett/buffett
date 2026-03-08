@@ -56,6 +56,7 @@ COOLDOWN_SEC_AFTER_LOSS_STREAK = int(os.getenv("COOLDOWN_SEC_AFTER_LOSS_STREAK",
 ALGO_ORDER_UNSUPPORTED = False
 
 TICKER_SEC    = 30
+POSITION_TICKER_SEC = int(os.getenv("POSITION_TICKER_SEC", "60"))
 HEAVY_SEC     = 15
 ANALYZE_SEC   = 10
 
@@ -108,6 +109,9 @@ def now_iso():
 
 def log(msg):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
+
+def loop_wait_seconds() -> int:
+    return POSITION_TICKER_SEC if fetch_current_position() else TICKER_SEC
 
 # =========================
 # DB
@@ -864,7 +868,7 @@ def main():
                     update_open_trade_levels(new_sl_price, new_tp_price, sl_pct, tp_pct)
 
                     log(f"AI: NO_POSITION (보유 중, age={age:.1f}s < {MIN_HOLD_SEC}s) → SL/TP만 재설정하고 유지")
-                    time.sleep(TICKER_SEC)
+                    time.sleep(loop_wait_seconds())
                     continue
 
                 # 최소 홀드 지난 경우: 연속 NO_POSITION 체크
@@ -890,7 +894,7 @@ def main():
                         log("[WARN] 보호주문 재설정 실패. 로컬 SL/TP 감시 계속")
                     update_open_trade_levels(new_sl_price, new_tp_price, sl_pct, tp_pct)
 
-                    time.sleep(TICKER_SEC)
+                    time.sleep(loop_wait_seconds())
                     continue
 
                 # 임계치 도달 → 평탄화
@@ -927,7 +931,7 @@ def main():
                         log("[WARN] 보호주문 재설정 실패. 로컬 SL/TP 감시 계속")
                     update_open_trade_levels(new_sl_price, new_tp_price, sl_pct, tp_pct)
                     log(f"보유 중 동일 방향: SL/TP 재설정 완료 (SL={new_sl_price}, TP={new_tp_price})")
-                    time.sleep(TICKER_SEC)
+                    time.sleep(loop_wait_seconds())
                     continue
                 else:
                     log("보유 중 반대 방향 신호 → FLIP: 평탄화 후 신규 진입")
@@ -974,7 +978,7 @@ def main():
             else:
                 log("주문 미체결/스킵")
 
-            time.sleep(TICKER_SEC)
+            time.sleep(loop_wait_seconds())
 
         except ccxt.BaseError as ex:
             log(f"[CCXT] {type(ex).__name__}: {ex}"); time.sleep(2)

@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import ccxt
 import numpy as np
 import os
+import time
 
 # 현재 기본 코인명 (파일 기준)
 with open("txt/coinName.txt", "r", encoding="utf-8") as f:
@@ -20,13 +21,20 @@ st.set_page_config(
 )
 
 # Coin 리스트 가져오기
-@st.cache_data
+@st.cache_data(ttl=5)
 def get_available_coin_names():
     db_files = [f for f in os.listdir("db") if f.endswith("_trading.db")]
     return [f.replace("_trading.db", "") for f in db_files]
 
+def get_db_connection(coin_name: str):
+    conn = sqlite3.connect(f"db/{coin_name}_trading.db", timeout=10)
+    conn.execute("PRAGMA query_only=ON;")
+    return conn
+
 # --- 사이드바 구성 ---
 st.sidebar.title("⚙️ 대시보드 설정")
+auto_refresh = st.sidebar.checkbox("자동 새로고침 (5초)", value=True)
+refresh_interval_sec = 5
 
 available_coins = get_available_coin_names()
 selected_coin = st.sidebar.selectbox("코인 선택:", available_coins, index=available_coins.index(default_coin) if default_coin in available_coins else 0)
@@ -51,7 +59,7 @@ st.markdown("""
 
 # 데이터 로딩 함수들
 def get_trades_data():
-    conn = sqlite3.connect(f"db/{_coinName}_trading.db")
+    conn = get_db_connection(_coinName)
     query = """
     SELECT id, timestamp, action, entry_price, exit_price, amount, leverage,
            status, profit_loss, profit_loss_percentage, exit_timestamp
@@ -66,7 +74,7 @@ def get_trades_data():
     return df
 
 def get_ai_analysis_data():
-    conn = sqlite3.connect(f"db/{_coinName}_trading.db")
+    conn = get_db_connection(_coinName)
     query = """
     SELECT id, timestamp, current_price, direction,
            recommended_leverage, reasoning, trade_id
@@ -78,10 +86,10 @@ def get_ai_analysis_data():
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     return df
 
-@st.cache_data(ttl=3600)
-def get_Coin_price_data(timeframe='1d', limit=90):
+@st.cache_data(ttl=300)
+def get_Coin_price_data(coin_name, timeframe='1d', limit=90):
     exchange = ccxt.binance()
-    ohlcv = exchange.fetch_ohlcv(f'{_coinName}/USDT', timeframe, limit=limit)
+    ohlcv = exchange.fetch_ohlcv(f'{coin_name}/USDT', timeframe, limit=limit)
     df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
     df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
     return df
@@ -222,7 +230,8 @@ try:
     # 데이터 로드
     trades_df = get_trades_data()
     ai_analysis_df = get_ai_analysis_data()
-    Coin_price_df = get_Coin_price_data()
+    Coin_price_df = get_Coin_price_data(_coinName)
+    st.caption(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (local)")
 
     st.sidebar.title(f"Currently invested coins are: {default_coin}")
     # 시간 필터
@@ -592,3 +601,7 @@ try:
 except Exception as e:
     st.error(f"An error occurred: {str(e)}")
     st.stop()
+
+if auto_refresh:
+    time.sleep(refresh_interval_sec)
+    st.rerun()

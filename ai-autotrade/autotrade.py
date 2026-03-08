@@ -62,10 +62,12 @@ ANALYZE_SEC   = 10
 
 # 코인명
 COIN_NAME_PATH = os.path.join(BASE_DIR, "txt", "coinName.txt")
-if os.path.exists(COIN_NAME_PATH):
-    BASE = open(COIN_NAME_PATH, "r", encoding="utf-8").read().strip().replace(" ", "").upper()
-else:
-    BASE = "XCN"
+BASE = (os.getenv("COIN_NAME") or "").strip().replace(" ", "").upper()
+if not BASE:
+    if os.path.exists(COIN_NAME_PATH):
+        BASE = open(COIN_NAME_PATH, "r", encoding="utf-8").read().strip().replace(" ", "").upper()
+    else:
+        BASE = "XCN"
 
 SYMBOL  = f"{BASE}/USDT:USDT"   # USDT-M Perpetual
 DB_FILE = os.path.join(BASE_DIR, "db", f"{BASE.lower()}_trading.db")

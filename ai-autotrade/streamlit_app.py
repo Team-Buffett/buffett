@@ -37,7 +37,9 @@ auto_refresh = st.sidebar.checkbox("자동 새로고침 (5초)", value=True)
 refresh_interval_sec = 5
 
 available_coins = get_available_coin_names()
-selected_coin = st.sidebar.selectbox("코인 선택:", available_coins, index=available_coins.index(default_coin) if default_coin in available_coins else 0)
+coin_options = ["ALL (XRP+ETH)"] + available_coins
+default_idx = coin_options.index(default_coin) if default_coin in coin_options else 0
+selected_coin = st.sidebar.selectbox("코인 선택:", coin_options, index=default_idx)
 
 # 선택된 코인명 전역 설정
 _coinName = selected_coin
@@ -58,8 +60,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # 데이터 로딩 함수들
-def get_trades_data():
-    conn = get_db_connection(_coinName)
+def get_trades_data(coin_name):
+    conn = get_db_connection(coin_name)
     query = """
     SELECT id, timestamp, action, entry_price, exit_price, amount, leverage,
            status, profit_loss, profit_loss_percentage, exit_timestamp
@@ -73,8 +75,8 @@ def get_trades_data():
         df['exit_timestamp'] = pd.to_datetime(df['exit_timestamp'])
     return df
 
-def get_ai_analysis_data():
-    conn = get_db_connection(_coinName)
+def get_ai_analysis_data(coin_name):
+    conn = get_db_connection(coin_name)
     query = """
     SELECT id, timestamp, current_price, direction,
            recommended_leverage, reasoning, trade_id
@@ -227,9 +229,43 @@ def calculate_trading_metrics(trades_df, Coin_price_df=None, time_filter=None, f
     }
 
 try:
+    if selected_coin == "ALL (XRP+ETH)":
+        st.markdown("<h1 class='header'>XRP + ETH Trading Dashboard</h1>", unsafe_allow_html=True)
+        st.caption(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (local)")
+        cols = st.columns(2)
+        for i, coin in enumerate(["XRP", "ETH"]):
+            with cols[i]:
+                if coin.lower() not in [c.lower() for c in available_coins]:
+                    st.warning(f"{coin} DB가 없습니다.")
+                    continue
+                c_trades = get_trades_data(coin)
+                c_ai = get_ai_analysis_data(coin)
+                c_price = get_Coin_price_data(coin)
+                c_metrics = calculate_trading_metrics(c_trades, c_price, None, None)
+                c_open = c_trades[c_trades['status'] == 'OPEN']
+                c_has_open = len(c_open) > 0
+                c_pos = c_open.iloc[0] if c_has_open else None
+                c_now_price = c_ai.iloc[0]['current_price'] if not c_ai.empty else c_price.iloc[-1]['close']
+
+                st.markdown(f"<h2 class='subheader'>{coin}</h2>", unsafe_allow_html=True)
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Total Return", f"{c_metrics['total_return']:.2f}%")
+                m2.metric("Win Rate", f"{c_metrics['win_rate']:.1f}%")
+                m3.metric("Total Trades", f"{c_metrics['total_trades']}")
+                m4, m5, m6 = st.columns(3)
+                m4.metric("Current Price", f"${c_now_price:,.4f}")
+                m5.metric("Position", c_pos['action'].upper() if c_has_open else "NO_POSITION")
+                latest_dir = c_ai.iloc[0]['direction'] if not c_ai.empty else "N/A"
+                m6.metric("AI Direction", latest_dir)
+
+                show_df = c_trades[['timestamp', 'action', 'entry_price', 'status', 'profit_loss']].head(8).copy()
+                show_df['timestamp'] = show_df['timestamp'].dt.strftime('%m-%d %H:%M:%S')
+                st.dataframe(show_df, use_container_width=True, height=260)
+        st.stop()
+
     # 데이터 로드
-    trades_df = get_trades_data()
-    ai_analysis_df = get_ai_analysis_data()
+    trades_df = get_trades_data(_coinName)
+    ai_analysis_df = get_ai_analysis_data(_coinName)
     Coin_price_df = get_Coin_price_data(_coinName)
     st.caption(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (local)")
 

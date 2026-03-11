@@ -49,10 +49,11 @@ MAX_LEVERAGE  = int(os.getenv("MAX_LEVERAGE", "8"))
 DAILY_MAX_LOSS_USDT = float(os.getenv("DAILY_MAX_LOSS_USDT", "100"))
 HEDGE_MODE    = os.getenv("HEDGE_MODE", "false").lower() == "true"
 ENABLE_FALLBACK = os.getenv("ENABLE_FALLBACK", "false").lower() == "true"
-MIN_RR = float(os.getenv("MIN_RR", "1.5"))
+MIN_RR = float(os.getenv("MIN_RR", "1.3"))
 MAX_NOTIONAL_FRAC = float(os.getenv("MAX_NOTIONAL_FRAC", "0.35"))
 MAX_CONSEC_LOSSES = int(os.getenv("MAX_CONSEC_LOSSES", "3"))
 COOLDOWN_SEC_AFTER_LOSS_STREAK = int(os.getenv("COOLDOWN_SEC_AFTER_LOSS_STREAK", "1800"))
+ENABLE_LOSS_STREAK_COOLDOWN = os.getenv("ENABLE_LOSS_STREAK_COOLDOWN", "false").lower() == "true"
 ALGO_ORDER_UNSUPPORTED = False
 
 TICKER_SEC    = int(os.getenv("TICKER_SEC", "240"))
@@ -823,6 +824,14 @@ def main():
             liq_ok, spread, depth_usdt, best_bid = liquidity_ok(SYMBOL, max_spread=0.002, min_depth_usdt=2000)
             log(f"OB check → ok={liq_ok}, spread={spread:.4%}, depth≈{int(depth_usdt)} USDT")
 
+            # 쿨다운 중이고 무포지션이면 AI 호출 자체를 생략해 비용을 절감
+            if time.time() < cooldown_until and not fetch_current_position():
+                remaining = int(cooldown_until - time.time())
+                wait_sec = min(max(30, loop_wait_seconds()), max(30, remaining))
+                log(f"[COOLDOWN] 무포지션 쿨다운 중({remaining}s 남음) → AI 호출 생략, 대기 {wait_sec}s")
+                time.sleep(wait_sec)
+                continue
+
             # === 분석 → 의사결정 (항상 먼저) ===
             snapshot = build_snapshot()
             snapshot["orderbook"] = {
@@ -996,12 +1005,13 @@ def main():
                         time.sleep(0.2)
 
             # === 신규 진입 실행 ===
-            loss_streak = get_recent_consecutive_losses(limit=max(5, MAX_CONSEC_LOSSES + 2))
-            if loss_streak >= MAX_CONSEC_LOSSES:
-                cooldown_until = max(cooldown_until, time.time() + COOLDOWN_SEC_AFTER_LOSS_STREAK)
-                log(f"[RISK] 최근 연속 손실 {loss_streak}회 → {COOLDOWN_SEC_AFTER_LOSS_STREAK}s 쿨다운")
-                time.sleep(ANALYZE_SEC)
-                continue
+            if ENABLE_LOSS_STREAK_COOLDOWN:
+                loss_streak = get_recent_consecutive_losses(limit=max(5, MAX_CONSEC_LOSSES + 2))
+                if loss_streak >= MAX_CONSEC_LOSSES:
+                    cooldown_until = max(cooldown_until, time.time() + COOLDOWN_SEC_AFTER_LOSS_STREAK)
+                    log(f"[RISK] 최근 연속 손실 {loss_streak}회 → {COOLDOWN_SEC_AFTER_LOSS_STREAK}s 쿨다운")
+                    time.sleep(ANALYZE_SEC)
+                    continue
 
             placed = place_orders(decision, price, market)
             if placed:

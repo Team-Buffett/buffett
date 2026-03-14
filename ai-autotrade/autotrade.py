@@ -55,6 +55,9 @@ MAX_CONSEC_LOSSES = int(os.getenv("MAX_CONSEC_LOSSES", "3"))
 COOLDOWN_SEC_AFTER_LOSS_STREAK = int(os.getenv("COOLDOWN_SEC_AFTER_LOSS_STREAK", "1800"))
 ENABLE_LOSS_STREAK_COOLDOWN = os.getenv("ENABLE_LOSS_STREAK_COOLDOWN", "false").lower() == "true"
 ALGO_ORDER_UNSUPPORTED = False
+ENABLE_LOSS_HOLD_ON_NO_POS = os.getenv("ENABLE_LOSS_HOLD_ON_NO_POS", "true").lower() == "true"
+LOSS_HOLD_TRIGGER_PCT = float(os.getenv("LOSS_HOLD_TRIGGER_PCT", "0.8"))  # 미실현손실 -0.8% 이하일 때 유예 대상
+LOSS_HOLD_MAX_SEC = int(os.getenv("LOSS_HOLD_MAX_SEC", "900"))            # 최대 유예 15분
 
 TICKER_SEC    = int(os.getenv("TICKER_SEC", "240"))
 POSITION_TICKER_SEC = int(os.getenv("POSITION_TICKER_SEC", "200"))
@@ -552,6 +555,14 @@ def fetch_current_position():
             if amt<0:  return {"side":"short","amount":abs(amt),"entry":entry}
     return None
 
+def unrealized_pnl_pct(pos: Dict[str, Any], current_price: float):
+    entry = float(pos.get("entry") or 0.0)
+    if entry <= 0:
+        return None
+    if pos.get("side") == "long":
+        return (current_price / entry - 1.0) * 100.0
+    return (1.0 - current_price / entry) * 100.0
+
 def sync_position_db():
     on_ex = fetch_current_position()
     in_db = get_latest_open_trade()
@@ -946,6 +957,15 @@ def main():
                     continue
 
                 # 임계치 도달 → 평탄화
+                if ENABLE_LOSS_HOLD_ON_NO_POS:
+                    pnl_pct = unrealized_pnl_pct(onpos, price)
+                    age = time.time() - (last_entry_time or time.time())
+                    if pnl_pct is not None and pnl_pct <= -abs(LOSS_HOLD_TRIGGER_PCT) and age < LOSS_HOLD_MAX_SEC:
+                        log(f"AI: NO_POSITION 연속 임계 도달 but 손실 유예 적용(pnl={pnl_pct:.3f}%, age={age:.0f}s) → 유지")
+                        no_pos_streak = max(0, NO_POS_STREAK_N - 1)
+                        time.sleep(loop_wait_seconds())
+                        continue
+
                 log("AI: NO_POSITION 연속 임계 도달 → 모든 미체결 취소 및 보유 포지션 평탄화")
                 cancel_all_orders_for_symbol()
                 flatten_position_if_any()

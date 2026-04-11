@@ -53,6 +53,8 @@ MIN_RR = float(os.getenv("MIN_RR", "1.3"))
 MAX_NOTIONAL_FRAC = float(os.getenv("MAX_NOTIONAL_FRAC", "0.60"))
 LIQ_MAX_SPREAD = float(os.getenv("LIQ_MAX_SPREAD", "0.0010"))         # 0.10%
 LIQ_MIN_DEPTH_USDT = float(os.getenv("LIQ_MIN_DEPTH_USDT", "50000"))  # ETH 기준 최소 호가 유동성
+ENABLE_TIME_FILTER = os.getenv("ENABLE_TIME_FILTER", "true").lower() == "true"
+ALLOWED_UTC_HOURS = os.getenv("ALLOWED_UTC_HOURS", "0,1,2,6,7,8,12,13,14,15,16,17,18,19,20,21,22,23")
 MAX_CONSEC_LOSSES = int(os.getenv("MAX_CONSEC_LOSSES", "3"))
 COOLDOWN_SEC_AFTER_LOSS_STREAK = int(os.getenv("COOLDOWN_SEC_AFTER_LOSS_STREAK", "1800"))
 ENABLE_LOSS_STREAK_COOLDOWN = os.getenv("ENABLE_LOSS_STREAK_COOLDOWN", "false").lower() == "true"
@@ -132,6 +134,28 @@ def idle_no_position_wait_seconds(idle_streak: int) -> int:
     base = max(10, TICKER_SEC)
     backoff = min(240, max(0, idle_streak) * 30)
     return base + backoff
+
+def _parse_allowed_hours(raw: str):
+    hours = set()
+    for token in (raw or "").split(","):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            h = int(token)
+        except Exception:
+            continue
+        if 0 <= h <= 23:
+            hours.add(h)
+    return hours
+
+def is_allowed_trading_time() -> bool:
+    if not ENABLE_TIME_FILTER:
+        return True
+    allowed = _parse_allowed_hours(ALLOWED_UTC_HOURS)
+    if not allowed:
+        return True
+    return datetime.utcnow().hour in allowed
 
 # =========================
 # DB
@@ -711,6 +735,10 @@ def enforce_local_sl_tp(price: float):
         flatten_position_if_any()
 
 def place_orders(decision: Dict[str,Any], price: float, market: Dict[str,Any]):
+    if not is_allowed_trading_time():
+        log("[TIME] 허용 거래 시간대 아님(UTC) → 신규 진입 스킵")
+        return None
+
     # 킬스위치
     if today_realized_pnl() <= -DAILY_MAX_LOSS_USDT:
         log("[KILL] 일일 손실 한도 도달. 신규 진입 금지"); return None
@@ -884,6 +912,13 @@ def main():
             # === 오더북 체크(프롬프트/로그용) ===
             liq_ok, spread, depth_usdt, best_bid = liquidity_ok(SYMBOL, max_spread=LIQ_MAX_SPREAD, min_depth_usdt=LIQ_MIN_DEPTH_USDT)
             log(f"OB check → ok={liq_ok}, spread={spread:.4%}, depth≈{int(depth_usdt)} USDT")
+
+            # 허용 시간대 밖 + 무포지션이면 AI 호출 자체를 생략해 비용 절감
+            if not is_allowed_trading_time() and not fetch_current_position():
+                wait_sec = max(60, TICKER_SEC)
+                log(f"[TIME] 비거래 시간대(UTC) & 무포지션 → AI 호출 생략, 대기 {wait_sec}s")
+                time.sleep(wait_sec)
+                continue
 
             # 쿨다운 중이고 무포지션이면 AI 호출 자체를 생략해 비용을 절감
             if time.time() < cooldown_until and not fetch_current_position():

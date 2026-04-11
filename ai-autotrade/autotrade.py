@@ -66,10 +66,10 @@ ENABLE_LOSS_HOLD_ON_NO_POS = os.getenv("ENABLE_LOSS_HOLD_ON_NO_POS", "true").low
 LOSS_HOLD_TRIGGER_PCT = float(os.getenv("LOSS_HOLD_TRIGGER_PCT", "0.8"))  # 미실현손실 -0.8% 이하일 때 유예 대상
 LOSS_HOLD_MAX_SEC = int(os.getenv("LOSS_HOLD_MAX_SEC", "900"))            # 최대 유예 15분
 
-TICKER_SEC    = int(os.getenv("TICKER_SEC", "240"))
-POSITION_TICKER_SEC = int(os.getenv("POSITION_TICKER_SEC", "150"))
+TICKER_SEC    = int(os.getenv("TICKER_SEC", "120"))
+POSITION_TICKER_SEC = int(os.getenv("POSITION_TICKER_SEC", "90"))
 HEAVY_SEC     = 15
-ANALYZE_SEC   = int(os.getenv("ANALYZE_SEC", "60"))
+ANALYZE_SEC   = int(os.getenv("ANALYZE_SEC", "30"))
 
 # 코인명
 COIN_NAME_PATH = os.path.join(BASE_DIR, "txt", "coinName.txt")
@@ -135,7 +135,7 @@ def loop_wait_seconds() -> int:
 def idle_no_position_wait_seconds(idle_streak: int) -> int:
     # 무포지션이 길어질수록 호출 빈도를 줄여 API 비용을 절감
     base = max(10, TICKER_SEC)
-    backoff = min(240, max(0, idle_streak) * 30)
+    backoff = min(120, max(0, idle_streak) * 15)
     return base + backoff
 
 def _parse_allowed_hours(raw: str):
@@ -939,7 +939,7 @@ def main():
 
             # 허용 시간대 밖 + 무포지션이면 AI 호출 자체를 생략해 비용 절감
             if not is_allowed_trading_time() and not fetch_current_position():
-                wait_sec = max(60, TICKER_SEC)
+                wait_sec = 60
                 log(f"[TIME] 비거래 시간대(UTC) & 무포지션 → AI 호출 생략, 대기 {wait_sec}s")
                 time.sleep(wait_sec)
                 continue
@@ -947,7 +947,7 @@ def main():
             # 쿨다운 중이고 무포지션이면 AI 호출 자체를 생략해 비용을 절감
             if time.time() < cooldown_until and not fetch_current_position():
                 remaining = int(cooldown_until - time.time())
-                wait_sec = min(max(30, loop_wait_seconds()), max(30, remaining))
+                wait_sec = min(60, max(30, remaining))
                 log(f"[COOLDOWN] 무포지션 쿨다운 중({remaining}s 남음) → AI 호출 생략, 대기 {wait_sec}s")
                 time.sleep(wait_sec)
                 continue

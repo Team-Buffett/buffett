@@ -52,7 +52,7 @@ ENABLE_FALLBACK = os.getenv("ENABLE_FALLBACK", "false").lower() == "true"
 MIN_RR = float(os.getenv("MIN_RR", "1.5"))
 MAX_NOTIONAL_FRAC = float(os.getenv("MAX_NOTIONAL_FRAC", "0.60"))
 LIQ_MAX_SPREAD = float(os.getenv("LIQ_MAX_SPREAD", "0.0010"))         # 0.10%
-LIQ_MIN_DEPTH_USDT = float(os.getenv("LIQ_MIN_DEPTH_USDT", "50000"))  # ETH 기준 최소 호가 유동성
+LIQ_MIN_DEPTH_USDT = float(os.getenv("LIQ_MIN_DEPTH_USDT", "20000"))  # ETH 기준 최소 호가 유동성(완화)
 MAX_RISK_USDT = float(os.getenv("MAX_RISK_USDT", "3.0"))              # 1회 트레이드 최대 허용 손실(USDT)
 ENABLE_TIME_FILTER = os.getenv("ENABLE_TIME_FILTER", "true").lower() == "true"
 ALLOWED_UTC_HOURS = os.getenv("ALLOWED_UTC_HOURS", "0,1,2,6,7,8,12,13,14,15,16,17,18,19,20,21,22,23")

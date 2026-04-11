@@ -54,6 +54,8 @@ MAX_NOTIONAL_FRAC = float(os.getenv("MAX_NOTIONAL_FRAC", "0.60"))
 LIQ_MAX_SPREAD = float(os.getenv("LIQ_MAX_SPREAD", "0.0010"))         # 0.10%
 LIQ_MIN_DEPTH_USDT = float(os.getenv("LIQ_MIN_DEPTH_USDT", "20000"))  # ETH 기준 최소 호가 유동성(완화)
 MAX_RISK_USDT = float(os.getenv("MAX_RISK_USDT", "3.0"))              # 1회 트레이드 최대 허용 손실(USDT)
+MIN_RISK_USDT = float(os.getenv("MIN_RISK_USDT", "0.06"))             # 1회 트레이드 최소 위험금액(체결 하한)
+MAX_RISK_PCT_OF_FREE = float(os.getenv("MAX_RISK_PCT_OF_FREE", "0.02"))  # 잔고 대비 1회 최대 리스크 비율(2%)
 ENABLE_TIME_FILTER = os.getenv("ENABLE_TIME_FILTER", "true").lower() == "true"
 ALLOWED_UTC_HOURS = os.getenv("ALLOWED_UTC_HOURS", "0,1,2,6,7,8,12,13,14,15,16,17,18,19,20,21,22,23")
 MAX_CONSEC_LOSSES = int(os.getenv("MAX_CONSEC_LOSSES", "3"))
@@ -777,21 +779,33 @@ def place_orders(decision: Dict[str,Any], price: float, market: Dict[str,Any]):
         log(f"RR 부족(rr={rr:.2f} < {MIN_RR:.2f}) → 스킵")
         return None
 
-    # === SL 거리 기반 포지션 사이징 ===
-    # 위험금액 = Equity * RISK_PCT * AI스케일 (0.5~2.0), 절대 상한도 적용
-    ai_scale = float(decision["recommended_position_size"])
-    risk_amount = free * clamp(RISK_PCT * ai_scale, 0.001, 0.01)  # 0.1%~1.0% 사이
-    risk_amount = min(risk_amount, MAX_RISK_USDT)
-    # 수량 = 위험금액 / 가격변동폭
-    # (주의) 손실은 레버리지 배수가 아니라 가격변동폭*수량으로 결정됨
-    raw_amount = risk_amount / max(1e-9, stop_distance)
-
     # 정밀도/최소주문
     exchange.load_markets()
     px_entry = float(exchange.price_to_precision(SYMBOL, price))
-    amount   = float(exchange.amount_to_precision(SYMBOL, raw_amount))
     mkt = market
     min_cost = (mkt.get('limits',{}).get('cost',{}) or {}).get('min') or 5
+
+    # === 잔고 적응형 리스크 사이징 ===
+    # 위험금액 = Equity * RISK_PCT * AI스케일, 최소주문 체결 가능성과 잔고 상한을 동시에 반영
+    ai_scale = float(decision["recommended_position_size"])
+    risk_amount = free * clamp(RISK_PCT * ai_scale, 0.003, 0.015)  # 0.3%~1.5% 사이
+
+    # 최소주문(min_cost)이 성립하려면 필요한 최소 위험금액(근사):
+    # min_risk_needed ≈ min_cost * stop_distance_pct
+    min_risk_needed = float(min_cost) * float(stop_distance_pct)
+    risk_amount = max(risk_amount, MIN_RISK_USDT, min_risk_needed * 1.2)  # 20% 버퍼
+
+    # 과도한 리스크 상한: 절대값 + 잔고비율 중 더 보수적인 값 적용
+    risk_cap = min(MAX_RISK_USDT, free * clamp(MAX_RISK_PCT_OF_FREE, 0.005, 0.05))
+    risk_amount = min(risk_amount, max(0.0, risk_cap))
+    if risk_amount <= 0:
+        log("유효 리스크 금액이 0 이하 → 스킵")
+        return None
+
+    # 수량 = 위험금액 / 가격변동폭
+    # (주의) 손실은 레버리지 배수가 아니라 가격변동폭*수량으로 결정됨
+    raw_amount = risk_amount / max(1e-9, stop_distance)
+    amount   = float(exchange.amount_to_precision(SYMBOL, raw_amount))
     notional = amount * px_entry
     if notional < min_cost:
         amount = float(exchange.amount_to_precision(SYMBOL, (min_cost/px_entry)))

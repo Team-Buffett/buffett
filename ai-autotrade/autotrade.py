@@ -45,7 +45,7 @@ BINANCE_SECRET  = require_env("BINANCE_SECRET_KEY")
 # 파라미터 (필요시 .env에서 조정)
 AI_MODEL      = os.getenv("OPENAI_MODEL", "gpt-4.1-nano")
 RISK_PCT      = float(os.getenv("RISK_PCT", "0.004"))     # 트레이드당 계좌 리스크 0.4%
-MAX_LEVERAGE  = int(os.getenv("MAX_LEVERAGE", "8"))
+MAX_LEVERAGE  = int(os.getenv("MAX_LEVERAGE", "10"))
 DAILY_MAX_LOSS_USDT = float(os.getenv("DAILY_MAX_LOSS_USDT", "100"))
 HEDGE_MODE    = os.getenv("HEDGE_MODE", "false").lower() == "true"
 ENABLE_FALLBACK = os.getenv("ENABLE_FALLBACK", "false").lower() == "true"
@@ -53,9 +53,9 @@ MIN_RR = float(os.getenv("MIN_RR", "1.5"))
 MAX_NOTIONAL_FRAC = float(os.getenv("MAX_NOTIONAL_FRAC", "0.60"))
 LIQ_MAX_SPREAD = float(os.getenv("LIQ_MAX_SPREAD", "0.0010"))         # 0.10%
 LIQ_MIN_DEPTH_USDT = float(os.getenv("LIQ_MIN_DEPTH_USDT", "20000"))  # ETH 기준 최소 호가 유동성(완화)
-MAX_RISK_USDT = float(os.getenv("MAX_RISK_USDT", "3.0"))              # 1회 트레이드 최대 허용 손실(USDT)
+MAX_RISK_USDT = float(os.getenv("MAX_RISK_USDT", "4.0"))              # 1회 트레이드 최대 허용 손실(USDT)
 MIN_RISK_USDT = float(os.getenv("MIN_RISK_USDT", "0.06"))             # 1회 트레이드 최소 위험금액(체결 하한)
-MAX_RISK_PCT_OF_FREE = float(os.getenv("MAX_RISK_PCT_OF_FREE", "0.02"))  # 잔고 대비 1회 최대 리스크 비율(2%)
+MAX_RISK_PCT_OF_FREE = float(os.getenv("MAX_RISK_PCT_OF_FREE", "0.025")) # 잔고 대비 1회 최대 리스크 비율(2.5%)
 ENABLE_TIME_FILTER = os.getenv("ENABLE_TIME_FILTER", "true").lower() == "true"
 ALLOWED_UTC_HOURS = os.getenv("ALLOWED_UTC_HOURS", "0,1,2,6,7,8,12,13,14,15,16,17,18,19,20,21,22,23")
 MAX_CONSEC_LOSSES = int(os.getenv("MAX_CONSEC_LOSSES", "3"))

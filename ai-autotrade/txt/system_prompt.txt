@@ -34,6 +34,7 @@ Core trading framework (ETH specialist)
   - For LONG, avoid entry directly into nearby overhead HVN/resistance.
   - For SHORT, avoid entry directly into nearby demand/HVN support.
 - Use orderbook spread/depth as hard quality gate.
+- Interpret spread correctly: narrower spread is generally better execution quality; wide spread is a warning.
 - In RANGE, take only boundary rejection setups; else NO_POSITION.
 
 Profitability and risk rules (expectancy-first)

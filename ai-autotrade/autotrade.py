@@ -51,6 +51,8 @@ HEDGE_MODE    = os.getenv("HEDGE_MODE", "false").lower() == "true"
 ENABLE_FALLBACK = os.getenv("ENABLE_FALLBACK", "false").lower() == "true"
 MIN_RR = float(os.getenv("MIN_RR", "1.3"))
 MAX_NOTIONAL_FRAC = float(os.getenv("MAX_NOTIONAL_FRAC", "0.60"))
+LIQ_MAX_SPREAD = float(os.getenv("LIQ_MAX_SPREAD", "0.0010"))         # 0.10%
+LIQ_MIN_DEPTH_USDT = float(os.getenv("LIQ_MIN_DEPTH_USDT", "50000"))  # ETH 기준 최소 호가 유동성
 MAX_CONSEC_LOSSES = int(os.getenv("MAX_CONSEC_LOSSES", "3"))
 COOLDOWN_SEC_AFTER_LOSS_STREAK = int(os.getenv("COOLDOWN_SEC_AFTER_LOSS_STREAK", "1800"))
 ENABLE_LOSS_STREAK_COOLDOWN = os.getenv("ENABLE_LOSS_STREAK_COOLDOWN", "false").lower() == "true"
@@ -714,7 +716,7 @@ def place_orders(decision: Dict[str,Any], price: float, market: Dict[str,Any]):
         log("[KILL] 일일 손실 한도 도달. 신규 진입 금지"); return None
 
     # 유동성/스프레드 필터
-    ok, spread, depth_usdt, _ = liquidity_ok(SYMBOL, max_spread=0.002, min_depth_usdt=2000)
+    ok, spread, depth_usdt, _ = liquidity_ok(SYMBOL, max_spread=LIQ_MAX_SPREAD, min_depth_usdt=LIQ_MIN_DEPTH_USDT)
     if not ok:
         log(f"유동성/스프레드 부족: spread={spread:.4%}, depth≈{int(depth_usdt)}USDT → 대기")
         return None
@@ -880,7 +882,7 @@ def main():
             close_if_no_position_update_db()
 
             # === 오더북 체크(프롬프트/로그용) ===
-            liq_ok, spread, depth_usdt, best_bid = liquidity_ok(SYMBOL, max_spread=0.002, min_depth_usdt=2000)
+            liq_ok, spread, depth_usdt, best_bid = liquidity_ok(SYMBOL, max_spread=LIQ_MAX_SPREAD, min_depth_usdt=LIQ_MIN_DEPTH_USDT)
             log(f"OB check → ok={liq_ok}, spread={spread:.4%}, depth≈{int(depth_usdt)} USDT")
 
             # 쿨다운 중이고 무포지션이면 AI 호출 자체를 생략해 비용을 절감

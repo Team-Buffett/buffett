@@ -62,7 +62,7 @@ LOSS_HOLD_TRIGGER_PCT = float(os.getenv("LOSS_HOLD_TRIGGER_PCT", "0.8"))  # 미�
 LOSS_HOLD_MAX_SEC = int(os.getenv("LOSS_HOLD_MAX_SEC", "900"))            # 최대 유예 15분
 
 TICKER_SEC    = int(os.getenv("TICKER_SEC", "240"))
-POSITION_TICKER_SEC = int(os.getenv("POSITION_TICKER_SEC", "200"))
+POSITION_TICKER_SEC = int(os.getenv("POSITION_TICKER_SEC", "150"))
 HEAVY_SEC     = 15
 ANALYZE_SEC   = int(os.getenv("ANALYZE_SEC", "60"))
 

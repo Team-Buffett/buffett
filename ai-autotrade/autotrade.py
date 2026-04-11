@@ -127,12 +127,6 @@ def now_iso():
 def log(msg):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
-def short_reason(text: str, max_len: int = 90) -> str:
-    s = (text or "").replace("\n", " ").strip()
-    if len(s) <= max_len:
-        return s
-    return s[:max_len] + "..."
-
 def loop_wait_seconds() -> int:
     return POSITION_TICKER_SEC if fetch_current_position() else TICKER_SEC
 
@@ -975,9 +969,9 @@ def main():
                         log("[GUARD] Fallback도 NO_POSITION → 그대로 대기")
                 else:
                     # 진짜로 무진입이어야 하는 상황이면 이유 로그
-                    log(f"NO_POSITION 이유: {short_reason(decision.get('reasoning') or '')}")
+                    log(f"NO_POSITION 이유: {(decision.get('reasoning') or '').strip()}")
             elif decision["direction"] == "NO_POSITION":
-                log(f"NO_POSITION 이유: {short_reason(decision.get('reasoning') or '')}")
+                log(f"NO_POSITION 이유: {(decision.get('reasoning') or '').strip()}")
 
             # 분석 기록 (trade_id는 체결 후 연결)
             analysis_id = save_ai_analysis({

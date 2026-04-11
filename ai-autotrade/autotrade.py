@@ -66,8 +66,8 @@ ENABLE_LOSS_HOLD_ON_NO_POS = os.getenv("ENABLE_LOSS_HOLD_ON_NO_POS", "true").low
 LOSS_HOLD_TRIGGER_PCT = float(os.getenv("LOSS_HOLD_TRIGGER_PCT", "0.8"))  # 미실현손실 -0.8% 이하일 때 유예 대상
 LOSS_HOLD_MAX_SEC = int(os.getenv("LOSS_HOLD_MAX_SEC", "900"))            # 최대 유예 15분
 
-TICKER_SEC    = int(os.getenv("TICKER_SEC", "120"))
-POSITION_TICKER_SEC = int(os.getenv("POSITION_TICKER_SEC", "90"))
+TICKER_SEC    = int(os.getenv("TICKER_SEC", "150"))
+POSITION_TICKER_SEC = int(os.getenv("POSITION_TICKER_SEC", "120"))
 HEAVY_SEC     = 15
 ANALYZE_SEC   = int(os.getenv("ANALYZE_SEC", "30"))
 
@@ -135,7 +135,7 @@ def loop_wait_seconds() -> int:
 def idle_no_position_wait_seconds(idle_streak: int) -> int:
     # 무포지션이 길어질수록 호출 빈도를 줄여 API 비용을 절감
     base = max(10, TICKER_SEC)
-    backoff = min(120, max(0, idle_streak) * 15)
+    backoff = min(180, max(0, idle_streak) * 20)
     return base + backoff
 
 def _parse_allowed_hours(raw: str):

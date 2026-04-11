@@ -428,20 +428,68 @@ def fetch_candles(tf: str, limit=120):
     )
     return df
 
+def compute_indicator_pack(df: pd.DataFrame) -> Dict[str, Any]:
+    if df is None or df.empty:
+        return {}
+
+    d = df.copy()
+    d["close"] = d["close"].astype(float)
+    d["volume"] = d["volume"].astype(float)
+    d["pv"] = d["close"] * d["volume"]
+
+    ema9 = float(d["close"].ewm(span=9, adjust=False).mean().iloc[-1])
+    v_sum = float(d["volume"].sum())
+    vwap = float(d["pv"].sum() / v_sum) if v_sum > 0 else float(d["close"].iloc[-1])
+
+    # 간단 볼륨 프로파일: 최근 구간을 12개 가격 구간으로 나눠 고거래량 노드(HVN) 추출
+    sub = d.tail(100).copy()
+    pmin = float(sub["close"].min())
+    pmax = float(sub["close"].max())
+    hvn_levels = []
+    if pmax > pmin:
+        bins = pd.cut(sub["close"], bins=12, include_lowest=True)
+        vp = sub.groupby(bins, observed=False)["volume"].sum().sort_values(ascending=False).head(3)
+        for interval, _vol in vp.items():
+            if pd.isna(interval):
+                continue
+            hvn_levels.append(float((interval.left + interval.right) / 2.0))
+
+    last = float(d["close"].iloc[-1])
+    regime = "RANGE"
+    if last > vwap and last > ema9:
+        regime = "TRENDING_UP"
+    elif last < vwap and last < ema9:
+        regime = "TRENDING_DOWN"
+
+    return {
+        "last_close": last,
+        "ema9": ema9,
+        "vwap": vwap,
+        "above_vwap": bool(last > vwap),
+        "above_ema9": bool(last > ema9),
+        "hvn_levels": hvn_levels,
+        "regime_hint": regime,
+    }
+
 def build_snapshot():
     data = {}
+    indicators = {}
     for tf in ["1m","3m","5m"]:
         try:
-            data[tf] = fetch_candles(tf).to_dict(orient="records")
+            df = fetch_candles(tf)
+            data[tf] = df.to_dict(orient="records")
+            indicators[tf] = compute_indicator_pack(df)
         except Exception as e:
             log(f"캔들 수집 실패 {tf}: {e}")
             data[tf] = []
+            indicators[tf] = {}
     price = float(exchange.fetch_ticker(SYMBOL)["last"])
     return {
         "timestamp": now_iso(),
         "symbol": SYMBOL,
         "current_price": price,
-        "timeframes": data
+        "timeframes": data,
+        "indicator_pack": indicators
     }
 
 def ai_decide(snapshot: Dict[str,Any]) -> Dict[str,Any]:

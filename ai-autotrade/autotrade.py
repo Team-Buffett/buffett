@@ -43,7 +43,7 @@ BINANCE_API_KEY = require_env("BINANCE_API_KEY")
 BINANCE_SECRET  = require_env("BINANCE_SECRET_KEY")
 
 # 파라미터 (필요시 .env에서 조정)
-AI_MODEL      = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+AI_MODEL      = os.getenv("OPENAI_MODEL", "gpt-4.1-nano")
 RISK_PCT      = float(os.getenv("RISK_PCT", "0.004"))     # 트레이드당 계좌 리스크 0.4%
 MAX_LEVERAGE  = int(os.getenv("MAX_LEVERAGE", "8"))
 DAILY_MAX_LOSS_USDT = float(os.getenv("DAILY_MAX_LOSS_USDT", "100"))

@@ -11,7 +11,7 @@
 """
 
 import os, time, json, sqlite3, traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any
 
 import pandas as pd
@@ -155,7 +155,7 @@ def is_allowed_trading_time() -> bool:
     allowed = _parse_allowed_hours(ALLOWED_UTC_HOURS)
     if not allowed:
         return True
-    return datetime.utcnow().hour in allowed
+    return datetime.now(timezone.utc).hour in allowed
 
 # =========================
 # DB

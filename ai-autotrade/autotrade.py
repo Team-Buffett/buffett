@@ -94,7 +94,7 @@ if not os.path.exists(DB_FILE) and os.path.exists(LEGACY_DB_FILE):
     except Exception:
         DB_FILE = LEGACY_DB_FILE
 
-ROTATE_ON_IDLE = os.getenv("ROTATE_ON_IDLE", "true").lower() == "true"
+ROTATE_ON_IDLE = os.getenv("ROTATE_ON_IDLE", "false").lower() == "true"
 ROTATE_IDLE_STREAK_N = int(os.getenv("ROTATE_IDLE_STREAK_N", "2"))
 ROTATE_COINS_RAW = os.getenv("ROTATE_COINS", "XRP,ETH,SOL")
 ENABLE_GLOBAL_IDLE_CYCLE_COOLDOWN = os.getenv("ENABLE_GLOBAL_IDLE_CYCLE_COOLDOWN", "true").lower() == "true"

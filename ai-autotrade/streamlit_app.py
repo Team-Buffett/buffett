@@ -86,7 +86,7 @@ def admin_login_box():
             st.error("로그인 실패")
 
 
-def admin_page():
+def admin_page(current_coin: str):
     if "is_admin" not in st.session_state:
         st.session_state["is_admin"] = False
 
@@ -96,6 +96,12 @@ def admin_page():
 
     st.markdown("<h1 class='header'>Admin Control Panel</h1>", unsafe_allow_html=True)
     st.caption(f"repo={REPO_DIR} | service_dir={BASE_DIR}")
+
+    admin_coin_options = sorted(get_available_coin_names())
+    if not admin_coin_options:
+        admin_coin_options = [current_coin]
+    default_idx = admin_coin_options.index(current_coin) if current_coin in admin_coin_options else 0
+    target_coin = st.selectbox("재시작 대상 코인", admin_coin_options, index=default_idx)
 
     top_cols = st.columns(3)
     with top_cols[0]:
@@ -122,10 +128,16 @@ def admin_page():
 
     with svc_cols[0]:
         if st.button("Restart (Script)", use_container_width=True):
+            try:
+                with open(BASE_DIR / "txt" / "coinName.txt", "w", encoding="utf-8") as f:
+                    f.write(str(target_coin).strip().upper())
+            except Exception as e:
+                st.error(f"coinName.txt 저장 실패: {e}")
+                return
             if script_to_use.exists():
                 code, out = run_cmd(["bash", str(script_to_use)], cwd=Path.home(), timeout=180)
                 if code == 0:
-                    st.success(f"재시작 완료: {script_to_use.name}")
+                    st.success(f"재시작 완료: {script_to_use.name} | coin={str(target_coin).strip().upper()}")
                 else:
                     st.error("재시작 실패")
                 st.code(out)
@@ -519,7 +531,7 @@ def get_live_position(coin_name: str):
 
 try:
     if st.session_state.get("admin_mode", False):
-        admin_page()
+        admin_page(_coinName)
         if st.session_state.get("admin_auto_refresh", False):
             time.sleep(admin_refresh_interval_sec)
             st.rerun()

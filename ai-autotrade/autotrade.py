@@ -67,6 +67,8 @@ ALGO_ORDER_UNSUPPORTED = False
 ENABLE_LOSS_HOLD_ON_NO_POS = os.getenv("ENABLE_LOSS_HOLD_ON_NO_POS", "true").lower() == "true"
 LOSS_HOLD_TRIGGER_PCT = float(os.getenv("LOSS_HOLD_TRIGGER_PCT", "0.8"))  # 미실현손실 -0.8% 이하일 때 유예 대상
 LOSS_HOLD_MAX_SEC = int(os.getenv("LOSS_HOLD_MAX_SEC", "900"))            # 최대 유예 15분
+BE_TRIGGER_PCT = float(os.getenv("BE_TRIGGER_PCT", "0.25"))               # 수익이 +0.25% 이상이면 BE 잠금 시작
+BE_LOCK_PCT = float(os.getenv("BE_LOCK_PCT", "0.05"))                     # 진입가 대비 +0.05%(숏은 -0.05%)로 SL 잠금
 
 TICKER_SEC    = int(os.getenv("TICKER_SEC", "240"))
 POSITION_TICKER_SEC = int(os.getenv("POSITION_TICKER_SEC", "150"))
@@ -1051,6 +1053,39 @@ def close_if_no_position_update_db():
         update_trade_status(in_db["id"], "CLOSED", price, now_iso(), pl, pl_pct)
         log("무포지션 동기화: DB 포지션 종결")
 
+
+def tighten_protective_levels(position_side: str, entry_price: float, current_price: float, new_sl: float, new_tp: float):
+    """
+    보유 중 보호값 재설정 시, 기존보다 불리한 방향으로 완화되지 않도록 보정하고
+    수익 구간에서는 본절+잠금(BE lock) 적용.
+    """
+    t = get_latest_open_trade()
+    old_sl = float(t.get("sl_price") or 0.0) if t else 0.0
+    old_tp = float(t.get("tp_price") or 0.0) if t else 0.0
+
+    if position_side == "long":
+        # 보호 완화 금지: LONG에서 SL/TP 하향 금지
+        if old_sl > 0:
+            new_sl = max(new_sl, old_sl)
+        if old_tp > 0:
+            new_tp = max(new_tp, old_tp)
+        # 수익 구간이면 본절+잠금
+        if entry_price > 0 and current_price >= entry_price * (1.0 + BE_TRIGGER_PCT / 100.0):
+            be_sl = entry_price * (1.0 + BE_LOCK_PCT / 100.0)
+            new_sl = max(new_sl, be_sl)
+    else:
+        # 보호 완화 금지: SHORT에서 SL/TP 상향 금지
+        if old_sl > 0:
+            new_sl = min(new_sl, old_sl)
+        if old_tp > 0:
+            new_tp = min(new_tp, old_tp)
+        # 수익 구간이면 본절+잠금
+        if entry_price > 0 and current_price <= entry_price * (1.0 - BE_TRIGGER_PCT / 100.0):
+            be_sl = entry_price * (1.0 - BE_LOCK_PCT / 100.0)
+            new_sl = min(new_sl, be_sl)
+
+    return new_sl, new_tp
+
 # =========================
 # 메인 루프
 # =========================
@@ -1241,6 +1276,10 @@ def main():
                         new_tp_price = price * (1 - tp_pct)
                         dir_for_protect = "SHORT"
 
+                    new_sl_price, new_tp_price = tighten_protective_levels(
+                        onpos["side"], float(onpos.get("entry") or 0.0), price, new_sl_price, new_tp_price
+                    )
+
                     new_sl_price = float(exchange.price_to_precision(SYMBOL, new_sl_price))
                     new_tp_price = float(exchange.price_to_precision(SYMBOL, new_tp_price))
                     ok_protect = place_protective_orders(dir_for_protect, onpos["amount"], new_sl_price, new_tp_price)
@@ -1268,6 +1307,10 @@ def main():
                         new_sl_price = price * (1 + sl_pct)
                         new_tp_price = price * (1 - tp_pct)
                         dir_for_protect = "SHORT"
+
+                    new_sl_price, new_tp_price = tighten_protective_levels(
+                        onpos["side"], float(onpos.get("entry") or 0.0), price, new_sl_price, new_tp_price
+                    )
                     new_sl_price = float(exchange.price_to_precision(SYMBOL, new_sl_price))
                     new_tp_price = float(exchange.price_to_precision(SYMBOL, new_tp_price))
                     ok_protect = place_protective_orders(dir_for_protect, onpos["amount"], new_sl_price, new_tp_price)
@@ -1309,6 +1352,10 @@ def main():
                 else:
                     new_sl_price = price * (1 + sl_pct)
                     new_tp_price = price * (1 - tp_pct)
+
+                new_sl_price, new_tp_price = tighten_protective_levels(
+                    onpos["side"], float(onpos.get("entry") or 0.0), price, new_sl_price, new_tp_price
+                )
 
                 new_sl_price = float(exchange.price_to_precision(SYMBOL, new_sl_price))
                 new_tp_price = float(exchange.price_to_precision(SYMBOL, new_tp_price))

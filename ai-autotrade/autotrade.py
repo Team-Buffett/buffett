@@ -118,16 +118,31 @@ rotation_idx = ROTATION_COINS.index(BASE) if BASE in ROTATION_COINS else 0
 # =========================
 SP_PATH = os.path.join(BASE_DIR, "txt", "system_prompt.txt")
 if os.path.exists(SP_PATH):
-    SYSTEM_PROMPT = open(SP_PATH, "r", encoding="utf-8").read()
+    SYSTEM_PROMPT_RAW = open(SP_PATH, "r", encoding="utf-8").read()
 else:
-    SYSTEM_PROMPT = """You are the world’s top high-frequency crypto scalper, specializing in XCN/USDT perpetual futures trading on Binance using the ChatGPT API.
+    SYSTEM_PROMPT_RAW = """You are the world’s top high-frequency crypto scalper, specializing in XCN/USDT perpetual futures trading on Binance using the ChatGPT API.
 Use 1m/3m/5m momentum. Output JSON with fields: direction, recommended_position_size, recommended_leverage, stop_loss_percentage, take_profit_percentage, reasoning."""
 
-SYSTEM_PROMPT = SYSTEM_PROMPT.replace("DOGE/USDT", f"{BASE}/USDT")
+def render_system_prompt(base: str) -> str:
+    """현재 거래 코인 기준으로 시스템 프롬프트를 재생성한다."""
+    b = (base or "").strip().upper()
+    symbol_spot = f"{b}/USDT"
+    p = SYSTEM_PROMPT_RAW
+    p = p.replace("{BASE}", b).replace("{SYMBOL}", symbol_spot)
+    # 기존 프롬프트에 하드코딩된 대표 심볼 치환
+    p = p.replace("DOGE/USDT", symbol_spot).replace("XCN/USDT", symbol_spot).replace("ETH/USDT", symbol_spot)
+    # 다른 코인명 하드코딩이 남아있어도 현재 심볼을 우선하도록 런타임 가드 추가
+    runtime_guard = (
+        f"Runtime trading target is strictly {symbol_spot} perpetual futures on Binance. "
+        "All analysis, reasoning, and output must be for this symbol only."
+    )
+    return f"{runtime_guard}\n\n{p}"
+
+SYSTEM_PROMPT = render_system_prompt(BASE)
 
 
 def refresh_runtime_for_coin(new_base: str):
-    global BASE, SYMBOL, DB_FILE, LEGACY_DB_FILE, SYSTEM_PROMPT
+    global BASE, SYMBOL, DB_FILE, LEGACY_DB_FILE, SYSTEM_PROMPT, SYSTEM_PROMPT_RAW
     normalized = (new_base or "").strip().replace(" ", "").upper()
     if not normalized or normalized == BASE:
         return
@@ -150,7 +165,8 @@ def refresh_runtime_for_coin(new_base: str):
 
     sp = read_text(SP_PATH)
     if sp.strip():
-        SYSTEM_PROMPT = sp.replace("DOGE/USDT", f"{BASE}/USDT")
+        SYSTEM_PROMPT_RAW = sp
+    SYSTEM_PROMPT = render_system_prompt(BASE)
 
 
 def rotate_to_next_coin() -> bool:
@@ -959,6 +975,7 @@ def main():
     market = ensure_market()
     log("=== Scalper Safe Bot Started ===")
     log(f"Symbol: {SYMBOL}")
+    log(f"[COIN] active={BASE}, symbol={SYMBOL}")
 
     last_heavy = 0
 
@@ -1000,6 +1017,7 @@ def main():
 
             # === 오더북 체크(프롬프트/로그용) ===
             liq_ok, spread, depth_usdt, best_bid = liquidity_ok(SYMBOL, max_spread=LIQ_MAX_SPREAD, min_depth_usdt=LIQ_MIN_DEPTH_USDT)
+            log(f"[COIN] active={BASE}, symbol={SYMBOL}")
             log(f"OB check → ok={liq_ok}, spread={spread:.4%}, depth≈{int(depth_usdt)} USDT")
 
             # 유동성 미달 + 무포지션이면 AI 호출을 생략해 비용/노이즈를 줄임
@@ -1032,6 +1050,7 @@ def main():
                 "depth_usdt": float(depth_usdt),
             }
             decision = ai_decide(snapshot)
+            log(f"[SIGNAL] coin={BASE}, symbol={SYMBOL}, direction={decision.get('direction', 'NO_POSITION')}")
 
             # RANGE 구간에서는 신규 진입을 기본적으로 차단
             if RANGE_BLOCK_ENTRY and decision["direction"] in ("LONG", "SHORT") and is_range_regime(snapshot) and not fetch_current_position():

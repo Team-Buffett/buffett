@@ -50,6 +50,7 @@ DAILY_MAX_LOSS_USDT = float(os.getenv("DAILY_MAX_LOSS_USDT", "100"))
 HEDGE_MODE    = os.getenv("HEDGE_MODE", "false").lower() == "true"
 ENABLE_FALLBACK = os.getenv("ENABLE_FALLBACK", "false").lower() == "true"
 MIN_RR = float(os.getenv("MIN_RR", "1.8"))
+MIN_RR_SHORT = float(os.getenv("MIN_RR_SHORT", "1.6"))
 MAX_NOTIONAL_FRAC = float(os.getenv("MAX_NOTIONAL_FRAC", "0.60"))
 LIQ_MAX_SPREAD = float(os.getenv("LIQ_MAX_SPREAD", "0.0010"))         # 0.10%
 LIQ_MIN_DEPTH_USDT = float(os.getenv("LIQ_MIN_DEPTH_USDT", "20000"))  # ETH 기준 최소 호가 유동성(완화)
@@ -724,7 +725,8 @@ def ai_decide(snapshot: Dict[str,Any]) -> Dict[str,Any]:
     sl_pct = clamp(sl_pct, 0.001, 0.05)
     tp_pct = clamp(tp_pct, 0.002, 0.2)
     # 모델이 낮은 RR(예: 1.6)을 반환해도 실행 필터(MIN_RR)와 충돌하지 않도록 TP 하한 보정
-    min_tp_pct = sl_pct * max(MIN_RR, 1.0)
+    rr_floor = MIN_RR_SHORT if direction == "SHORT" else MIN_RR
+    min_tp_pct = sl_pct * max(rr_floor, 1.0)
     if tp_pct + 1e-12 < min_tp_pct:
         tp_pct = min(0.2, min_tp_pct)
 
@@ -948,8 +950,9 @@ def place_orders(decision: Dict[str,Any], price: float, market: Dict[str,Any]):
     if stop_distance_pct <= 0:
         log("SL 계산 오류 → 스킵"); return None
     rr = tp_pct / max(sl_pct, 1e-9)
-    if rr + 1e-6 < MIN_RR:
-        log(f"RR 부족(rr={rr:.2f} < {MIN_RR:.2f}) → 스킵")
+    required_rr = MIN_RR_SHORT if decision["direction"] == "SHORT" else MIN_RR
+    if rr + 1e-6 < required_rr:
+        log(f"RR 부족(rr={rr:.2f} < {required_rr:.2f}, dir={decision['direction']}) → 스킵")
         return None
 
     # 정밀도/최소주문

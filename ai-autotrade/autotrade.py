@@ -721,6 +721,10 @@ def ai_decide(snapshot: Dict[str,Any]) -> Dict[str,Any]:
 
     sl_pct = clamp(sl_pct, 0.001, 0.05)
     tp_pct = clamp(tp_pct, 0.002, 0.2)
+    # 모델이 낮은 RR(예: 1.6)을 반환해도 실행 필터(MIN_RR)와 충돌하지 않도록 TP 하한 보정
+    min_tp_pct = sl_pct * max(MIN_RR, 1.0)
+    if tp_pct + 1e-12 < min_tp_pct:
+        tp_pct = min(0.2, min_tp_pct)
 
     return {
         "direction": direction,

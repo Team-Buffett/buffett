@@ -37,7 +37,7 @@ def require_env(name: str) -> str:
     return v
 
 MIN_HOLD_SEC    = int(os.getenv("MIN_HOLD_SEC", "60"))   # 최소 보유
-NO_POS_STREAK_N = int(os.getenv("NO_POS_STREAK_N", "3")) # NO_POSITION N틱 연속 시 청산
+NO_POS_STREAK_N = int(os.getenv("NO_POS_STREAK_N", "2")) # NO_POSITION N틱 연속 시 청산
 OPENAI_API_KEY  = require_env("OPENAI_API_KEY")
 BINANCE_API_KEY = require_env("BINANCE_API_KEY")
 BINANCE_SECRET  = require_env("BINANCE_SECRET_KEY")
@@ -45,11 +45,11 @@ BINANCE_SECRET  = require_env("BINANCE_SECRET_KEY")
 # 파라미터 (필요시 .env에서 조정)
 AI_MODEL      = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 RISK_PCT      = float(os.getenv("RISK_PCT", "0.004"))     # 트레이드당 계좌 리스크 0.4%
-MAX_LEVERAGE  = int(os.getenv("MAX_LEVERAGE", "10"))
+MAX_LEVERAGE  = int(os.getenv("MAX_LEVERAGE", "6"))
 DAILY_MAX_LOSS_USDT = float(os.getenv("DAILY_MAX_LOSS_USDT", "100"))
 HEDGE_MODE    = os.getenv("HEDGE_MODE", "false").lower() == "true"
 ENABLE_FALLBACK = os.getenv("ENABLE_FALLBACK", "false").lower() == "true"
-MIN_RR = float(os.getenv("MIN_RR", "1.5"))
+MIN_RR = float(os.getenv("MIN_RR", "1.8"))
 MAX_NOTIONAL_FRAC = float(os.getenv("MAX_NOTIONAL_FRAC", "0.60"))
 LIQ_MAX_SPREAD = float(os.getenv("LIQ_MAX_SPREAD", "0.0010"))         # 0.10%
 LIQ_MIN_DEPTH_USDT = float(os.getenv("LIQ_MIN_DEPTH_USDT", "20000"))  # ETH 기준 최소 호가 유동성(완화)

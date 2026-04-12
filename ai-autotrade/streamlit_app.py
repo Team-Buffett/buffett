@@ -156,8 +156,10 @@ def get_db_connection(coin_name: str):
 
 # --- 사이드바 구성 ---
 st.sidebar.title("⚙️ 대시보드 설정")
-auto_refresh = st.sidebar.checkbox("자동 새로고침(대시보드)", value=True)
-refresh_interval_sec = st.sidebar.selectbox("대시보드 새로고침(초)", [5, 10, 30, 60], index=0)
+auto_refresh = False
+refresh_interval_sec = st.sidebar.selectbox("대시보드 조회 주기(참고용, 초)", [5, 10, 30, 60], index=0)
+if st.sidebar.button("지금 새로고침", use_container_width=True):
+    st.rerun()
 
 available_coins = get_available_coin_names()
 selected_coin = st.sidebar.selectbox("코인 선택:", available_coins, index=available_coins.index(default_coin) if default_coin in available_coins else 0)
@@ -196,15 +198,67 @@ _coinName = selected_coin
 # --- 스타일 ---
 st.markdown("""
 <style>
-    .header { font-size: 2.5rem; color: #FF9900; text-align: center; margin-bottom: 1.5rem; }
-    .metrics-container { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; margin-bottom: 2rem; }
-    .metric-card { background-color: #262730; border-radius: 8px; padding: 1rem; text-align: center; width: calc(20% - 10px); box-sizing: border-box; border: 1px solid #3a3a3a; }
-    .metric-title { font-size: 1rem; color: #888888; margin-bottom: 0.5rem; }
-    .metric-value { font-size: 1.8rem; font-weight: bold; color: #FFFFFF; }
+    .header {
+        font-size: clamp(1.4rem, 2.8vw, 2.2rem);
+        color: #FF9900;
+        text-align: center;
+        margin-bottom: 1rem;
+        line-height: 1.2;
+        word-break: break-word;
+    }
+    .metrics-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 10px;
+        margin-bottom: 1.4rem;
+    }
+    .metric-card {
+        background-color: #262730;
+        border-radius: 8px;
+        padding: 0.8rem;
+        text-align: center;
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid #3a3a3a;
+        min-height: 86px;
+        overflow: hidden;
+    }
+    .metric-title {
+        font-size: clamp(0.72rem, 1.5vw, 0.9rem);
+        color: #b0b0b0;
+        margin-bottom: 0.35rem;
+        word-break: break-word;
+    }
+    .metric-value {
+        font-size: clamp(0.95rem, 2.2vw, 1.35rem);
+        font-weight: 700;
+        color: #FFFFFF;
+        line-height: 1.2;
+        word-break: break-word;
+    }
     .positive { color: #00CC96; }
     .negative { color: #EF553B; }
     .neutral { color: #FFD700; }
-    .subheader { font-size: 1.5rem; color: #FF9900; margin-top: 2rem; margin-bottom: 1rem; }
+    .subheader {
+        font-size: clamp(1.05rem, 2.2vw, 1.35rem);
+        color: #FF9900;
+        margin-top: 1.2rem;
+        margin-bottom: 0.7rem;
+        line-height: 1.2;
+        word-break: break-word;
+    }
+    .stMarkdown, .stText, .stDataFrame, .stCaption {
+        font-size: clamp(0.83rem, 1.6vw, 0.96rem);
+    }
+    @media (max-width: 900px) {
+        .metric-card { min-height: 76px; padding: 0.65rem; }
+    }
+    @media (max-width: 600px) {
+        .header { margin-bottom: 0.7rem; }
+        .subheader { margin-top: 0.9rem; margin-bottom: 0.5rem; }
+        .metrics-container { grid-template-columns: repeat(2, minmax(130px, 1fr)); gap: 8px; }
+        .metric-card { min-height: 72px; }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -567,8 +621,8 @@ try:
     with status_cols[3]:
         st.markdown(f"""
         <div class="metric-card" style="width: 100%">
-            <div class="metric-title">Auto Refresh</div>
-            <div class="metric-value">{refresh_interval_sec}s</div>
+            <div class="metric-title">Refresh Mode</div>
+            <div class="metric-value">Manual</div>
         </div>
         """, unsafe_allow_html=True)
     with status_cols[4]:
@@ -941,6 +995,4 @@ except Exception as e:
     st.error(f"An error occurred: {str(e)}")
     st.stop()
 
-if auto_refresh:
-    time.sleep(refresh_interval_sec)
-    st.rerun()
+# 대시보드는 전체 rerun 자동 새로고침을 끄고 수동 새로고침으로 동작

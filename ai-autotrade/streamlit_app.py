@@ -11,6 +11,7 @@ import time
 import hmac
 import subprocess
 from pathlib import Path
+from dotenv import load_dotenv
 
 # 현재 기본 코인명 (파일 기준)
 with open("txt/coinName.txt", "r", encoding="utf-8") as f:
@@ -25,8 +26,10 @@ st.set_page_config(
 
 BASE_DIR = Path(__file__).resolve().parent
 REPO_DIR = BASE_DIR.parent
-ADMIN_USER = "admin"
-ADMIN_PASSWORD = "Mmm1023!"
+load_dotenv(REPO_DIR / "buffett-config" / ".env")
+load_dotenv()
+ADMIN_USER = os.getenv("ADMIN_USER", "admin")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "Mmm1023!")
 
 
 def run_cmd(cmd, cwd=None, timeout=30):

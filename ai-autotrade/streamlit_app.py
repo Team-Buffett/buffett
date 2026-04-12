@@ -197,7 +197,19 @@ refresh_interval_sec = st.sidebar.selectbox("새로고침 주기(초)", [5, 10, 
 
 available_coins = get_available_coin_names()
 selected_coin = st.sidebar.selectbox("코인 선택:", available_coins, index=available_coins.index(default_coin) if default_coin in available_coins else 0)
-page_mode = st.sidebar.radio("페이지", ["Dashboard", "Admin"], index=0)
+
+if "admin_mode" not in st.session_state:
+    st.session_state["admin_mode"] = False
+
+admin_nav_cols = st.sidebar.columns(2)
+with admin_nav_cols[0]:
+    if st.button("관리자 페이지", use_container_width=True):
+        st.session_state["admin_mode"] = True
+        st.rerun()
+with admin_nav_cols[1]:
+    if st.button("대시보드", use_container_width=True):
+        st.session_state["admin_mode"] = False
+        st.rerun()
 
 # 선택된 코인명 전역 설정
 _coinName = selected_coin
@@ -433,7 +445,7 @@ def get_ai_direction_snapshot(ai_df: pd.DataFrame):
     }
 
 try:
-    if page_mode == "Admin":
+    if st.session_state.get("admin_mode", False):
         admin_page()
         if auto_refresh:
             time.sleep(refresh_interval_sec)

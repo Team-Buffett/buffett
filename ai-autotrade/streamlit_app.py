@@ -8,6 +8,9 @@ import ccxt
 import numpy as np
 import os
 import time
+import hmac
+import subprocess
+from pathlib import Path
 
 # 현재 기본 코인명 (파일 기준)
 with open("txt/coinName.txt", "r", encoding="utf-8") as f:
@@ -19,6 +22,159 @@ st.set_page_config(
     page_icon="📈",
     layout="wide"
 )
+
+BASE_DIR = Path(__file__).resolve().parent
+REPO_DIR = BASE_DIR.parent
+ADMIN_USER = "admin"
+ADMIN_PASSWORD = "Mmm1023!"
+
+
+def run_cmd(cmd, cwd=None, timeout=30):
+    try:
+        p = subprocess.run(
+            cmd,
+            cwd=str(cwd) if cwd else None,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+        out = (p.stdout or "").strip()
+        err = (p.stderr or "").strip()
+        merged = "\n".join([x for x in [out, err] if x]).strip()
+        return p.returncode, (merged if merged else "(no output)")
+    except Exception as e:
+        return 1, str(e)
+
+
+def get_proc_status():
+    rows = []
+    targets = {
+        "autotrade.py": "autotrade.py",
+        "multi_autotrade.py": "multi_autotrade.py",
+        "streamlit_app.py": "streamlit_app.py",
+    }
+    for name, pat in targets.items():
+        code, out = run_cmd(["pgrep", "-fa", pat], timeout=10)
+        running = code == 0 and out and out != "(no output)"
+        rows.append({
+            "process": name,
+            "running": "YES" if running else "NO",
+            "detail": out if running else "-",
+        })
+    return pd.DataFrame(rows)
+
+
+def start_single_services():
+    try:
+        out_log = open(BASE_DIR / "output.log", "a", encoding="utf-8")
+        st_log = open(BASE_DIR / "streamlit.log", "a", encoding="utf-8")
+        subprocess.Popen(
+            ["python3", "-u", "autotrade.py"],
+            cwd=str(BASE_DIR),
+            stdout=out_log,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        subprocess.Popen(
+            ["python3", "-m", "streamlit", "run", "streamlit_app.py", "--server.port", "8501"],
+            cwd=str(BASE_DIR),
+            stdout=st_log,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        return True, "single bot + streamlit 시작 요청 완료"
+    except Exception as e:
+        return False, str(e)
+
+
+def admin_login_box():
+    st.markdown("<h2 class='subheader'>Admin Login</h2>", unsafe_allow_html=True)
+    col1, col2 = st.columns(2)
+    with col1:
+        uid = st.text_input("아이디", key="admin_uid")
+    with col2:
+        pw = st.text_input("비밀번호", type="password", key="admin_pw")
+    if st.button("로그인", use_container_width=True):
+        ok = hmac.compare_digest(uid or "", ADMIN_USER) and hmac.compare_digest(pw or "", ADMIN_PASSWORD)
+        st.session_state["is_admin"] = bool(ok)
+        if ok:
+            st.success("관리자 로그인 성공")
+        else:
+            st.error("로그인 실패")
+
+
+def admin_page():
+    if "is_admin" not in st.session_state:
+        st.session_state["is_admin"] = False
+
+    if not st.session_state["is_admin"]:
+        admin_login_box()
+        return
+
+    st.markdown("<h1 class='header'>Admin Control Panel</h1>", unsafe_allow_html=True)
+    st.caption(f"repo={REPO_DIR} | service_dir={BASE_DIR}")
+
+    top_cols = st.columns(3)
+    with top_cols[0]:
+        if st.button("Git Pull", use_container_width=True):
+            code, out = run_cmd(["git", "pull"], cwd=REPO_DIR, timeout=120)
+            if code == 0:
+                st.success("git pull 완료")
+            else:
+                st.error("git pull 실패")
+            st.code(out)
+    with top_cols[1]:
+        if st.button("Service Status", use_container_width=True):
+            st.dataframe(get_proc_status(), use_container_width=True)
+    with top_cols[2]:
+        if st.button("로그아웃", use_container_width=True):
+            st.session_state["is_admin"] = False
+            st.rerun()
+
+    st.markdown("<h2 class='subheader'>Service Control</h2>", unsafe_allow_html=True)
+    svc_cols = st.columns(3)
+    restart_all_script = Path.home() / "restart_all.sh"
+    restart_script = Path.home() / "restart.sh"
+    script_to_use = restart_all_script if restart_all_script.exists() else restart_script
+
+    with svc_cols[0]:
+        if st.button("Restart (Script)", use_container_width=True):
+            if script_to_use.exists():
+                code, out = run_cmd(["bash", str(script_to_use)], cwd=Path.home(), timeout=180)
+                if code == 0:
+                    st.success(f"재시작 완료: {script_to_use.name}")
+                else:
+                    st.error("재시작 실패")
+                st.code(out)
+            else:
+                st.warning("restart_all.sh 또는 restart.sh가 홈 디렉토리에 없음")
+    with svc_cols[1]:
+        if st.button("Start Single Bot", use_container_width=True):
+            run_cmd(["pkill", "-f", "multi_autotrade.py"], timeout=10)
+            run_cmd(["pkill", "-f", "autotrade.py"], timeout=10)
+            ok, msg = start_single_services()
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
+    with svc_cols[2]:
+        if st.button("Stop All Bots", use_container_width=True):
+            c1, o1 = run_cmd(["pkill", "-f", "multi_autotrade.py"], timeout=10)
+            c2, o2 = run_cmd(["pkill", "-f", "autotrade.py"], timeout=10)
+            st.success("중지 요청 완료")
+            st.code(f"multi_autotrade.py: code={c1}\n{o1}\n\nautotrade.py: code={c2}\n{o2}")
+
+    st.markdown("<h2 class='subheader'>Quick Logs</h2>", unsafe_allow_html=True)
+    log_name = st.selectbox("로그 파일", ["output.log", "multi_output.log", "streamlit.log"])
+    tail_n = st.selectbox("마지막 N줄", [50, 100, 200, 400], index=1)
+    if st.button("로그 새로고침", use_container_width=True):
+        target = BASE_DIR / log_name
+        if target.exists():
+            code, out = run_cmd(["tail", "-n", str(tail_n), str(target)], timeout=20)
+            st.code(out)
+        else:
+            st.warning(f"파일 없음: {target}")
 
 # Coin 리스트 가져오기
 @st.cache_data(ttl=5)
@@ -38,6 +194,7 @@ refresh_interval_sec = st.sidebar.selectbox("새로고침 주기(초)", [5, 10, 
 
 available_coins = get_available_coin_names()
 selected_coin = st.sidebar.selectbox("코인 선택:", available_coins, index=available_coins.index(default_coin) if default_coin in available_coins else 0)
+page_mode = st.sidebar.radio("페이지", ["Dashboard", "Admin"], index=0)
 
 # 선택된 코인명 전역 설정
 _coinName = selected_coin
@@ -273,6 +430,13 @@ def get_ai_direction_snapshot(ai_df: pd.DataFrame):
     }
 
 try:
+    if page_mode == "Admin":
+        admin_page()
+        if auto_refresh:
+            time.sleep(refresh_interval_sec)
+            st.rerun()
+        st.stop()
+
     # 데이터 로드
     trades_df = get_trades_data(_coinName)
     ai_analysis_df = get_ai_analysis_data(_coinName)

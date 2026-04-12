@@ -30,6 +30,8 @@ load_dotenv(REPO_DIR / "buffett-config" / ".env")
 load_dotenv()
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "Mmm1023!")
+BINANCE_API_KEY = os.getenv("BINANCE_API_KEY", "")
+BINANCE_SECRET_KEY = os.getenv("BINANCE_SECRET_KEY", "")
 
 
 def run_cmd(cmd, cwd=None, timeout=30):
@@ -54,7 +56,6 @@ def get_proc_status():
     rows = []
     targets = {
         "autotrade.py": "autotrade.py",
-        "multi_autotrade.py": "multi_autotrade.py",
         "streamlit_app.py": "streamlit_app.py",
     }
     for name, pat in targets.items():
@@ -66,29 +67,6 @@ def get_proc_status():
             "detail": out if running else "-",
         })
     return pd.DataFrame(rows)
-
-
-def start_single_services():
-    try:
-        out_log = open(BASE_DIR / "output.log", "a", encoding="utf-8")
-        st_log = open(BASE_DIR / "streamlit.log", "a", encoding="utf-8")
-        subprocess.Popen(
-            ["python3", "-u", "autotrade.py"],
-            cwd=str(BASE_DIR),
-            stdout=out_log,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
-        subprocess.Popen(
-            ["python3", "-m", "streamlit", "run", "streamlit_app.py", "--server.port", "8501"],
-            cwd=str(BASE_DIR),
-            stdout=st_log,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
-        return True, "single bot + streamlit 시작 요청 완료"
-    except Exception as e:
-        return False, str(e)
 
 
 def admin_login_box():
@@ -103,6 +81,7 @@ def admin_login_box():
         st.session_state["is_admin"] = bool(ok)
         if ok:
             st.success("관리자 로그인 성공")
+            st.rerun()
         else:
             st.error("로그인 실패")
 
@@ -136,7 +115,7 @@ def admin_page():
             st.rerun()
 
     st.markdown("<h2 class='subheader'>Service Control</h2>", unsafe_allow_html=True)
-    svc_cols = st.columns(3)
+    svc_cols = st.columns(1)
     restart_all_script = Path.home() / "restart_all.sh"
     restart_script = Path.home() / "restart.sh"
     script_to_use = restart_all_script if restart_all_script.exists() else restart_script
@@ -152,24 +131,9 @@ def admin_page():
                 st.code(out)
             else:
                 st.warning("restart_all.sh 또는 restart.sh가 홈 디렉토리에 없음")
-    with svc_cols[1]:
-        if st.button("Start Single Bot", use_container_width=True):
-            run_cmd(["pkill", "-f", "multi_autotrade.py"], timeout=10)
-            run_cmd(["pkill", "-f", "autotrade.py"], timeout=10)
-            ok, msg = start_single_services()
-            if ok:
-                st.success(msg)
-            else:
-                st.error(msg)
-    with svc_cols[2]:
-        if st.button("Stop All Bots", use_container_width=True):
-            c1, o1 = run_cmd(["pkill", "-f", "multi_autotrade.py"], timeout=10)
-            c2, o2 = run_cmd(["pkill", "-f", "autotrade.py"], timeout=10)
-            st.success("중지 요청 완료")
-            st.code(f"multi_autotrade.py: code={c1}\n{o1}\n\nautotrade.py: code={c2}\n{o2}")
 
     st.markdown("<h2 class='subheader'>Quick Logs</h2>", unsafe_allow_html=True)
-    log_name = st.selectbox("로그 파일", ["output.log", "multi_output.log", "streamlit.log"])
+    log_name = st.selectbox("로그 파일", ["output.log", "streamlit.log"])
     tail_n = st.selectbox("마지막 N줄", [50, 100, 200, 400], index=1)
     if st.button("로그 새로고침", use_container_width=True):
         target = BASE_DIR / log_name
@@ -459,6 +423,46 @@ def get_ai_direction_snapshot(ai_df: pd.DataFrame):
         },
     }
 
+
+@st.cache_data(ttl=5)
+def get_live_position(coin_name: str):
+    """거래소 실포지션 우선 조회. 실패 시 None 반환."""
+    if not BINANCE_API_KEY or not BINANCE_SECRET_KEY:
+        return None
+    try:
+        ex = ccxt.binance({
+            "apiKey": BINANCE_API_KEY,
+            "secret": BINANCE_SECRET_KEY,
+            "enableRateLimit": True,
+            "options": {
+                "defaultType": "future",
+                "defaultMarket": "futures",
+                "adjustForTimeDifference": True,
+            }
+        })
+        symbol = f"{coin_name}/USDT:USDT"
+        positions = ex.fetch_positions([symbol])
+        for p in positions:
+            if p.get("symbol") != symbol:
+                continue
+            contracts = abs(float(p.get("contracts") or 0.0))
+            if contracts <= 0:
+                continue
+            side_raw = str(p.get("side") or "").lower()
+            side = "long" if side_raw == "long" else "short"
+            entry = float(p.get("entryPrice") or p.get("markPrice") or 0.0)
+            lev = int(float(p.get("leverage") or 1))
+            return {
+                "source": "exchange",
+                "action": side,
+                "amount": contracts,
+                "entry_price": entry,
+                "leverage": lev,
+            }
+    except Exception:
+        return None
+    return None
+
 try:
     if st.session_state.get("admin_mode", False):
         admin_page()
@@ -507,10 +511,19 @@ try:
     # 트레이딩 지표 계산
     metrics = calculate_trading_metrics(filtered_trades, Coin_price_df, time_filter, filter_time)
 
-    # 현재 오픈 포지션
+    # 현재 오픈 포지션 (거래소 실포지션 우선)
     open_trades = trades_df[trades_df['status'] == 'OPEN']
-    has_open_position = len(open_trades) > 0
-    current_position = open_trades.iloc[0] if has_open_position else None
+    db_has_open_position = len(open_trades) > 0
+    db_current_position = open_trades.iloc[0] if db_has_open_position else None
+    live_position = get_live_position(_coinName)
+    if live_position is not None:
+        has_open_position = True
+        current_position = live_position
+        position_source = "exchange"
+    else:
+        has_open_position = db_has_open_position
+        current_position = db_current_position
+        position_source = "db"
 
     # 현재 Coin 가격
     current_Coin_price = ai_analysis_df.iloc[0]['current_price'] if not ai_analysis_df.empty else Coin_price_df.iloc[-1]['close']
@@ -648,6 +661,7 @@ try:
             <div class="metric-value {position_color}">{position_status}</div>
         </div>
         """, unsafe_allow_html=True)
+        st.caption(f"Position Source: {position_source}")
 
     # Coin 가격 차트와 거래 시점 표시
     st.markdown(f"<h2 class='subheader'>{_coinName} Price Chart & Trade Entries</h2>", unsafe_allow_html=True)
@@ -815,7 +829,9 @@ try:
 
         position_cols = st.columns(2)
         with position_cols[0]:
-            entry_time = current_position['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
+            entry_time = "-"
+            if position_source == "db" and "timestamp" in current_position and pd.notna(current_position["timestamp"]):
+                entry_time = current_position['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
             st.markdown(f"""
             ### Position Details
             - **Direction**: {current_position['action'].upper()}
@@ -823,6 +839,7 @@ try:
             - **Entry Price**: ${current_position['entry_price']:,.2f}
             - **Leverage**: {current_position['leverage']}x
             - **Amount**: {current_position['amount']} {_coinName}
+            - **Source**: {position_source}
             """)
 
         with position_cols[1]:

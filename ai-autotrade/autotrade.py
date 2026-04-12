@@ -37,7 +37,7 @@ def require_env(name: str) -> str:
     return v
 
 MIN_HOLD_SEC    = int(os.getenv("MIN_HOLD_SEC", "60"))   # 최소 보유
-NO_POS_STREAK_N = int(os.getenv("NO_POS_STREAK_N", "5")) # NO_POSITION N틱 연속 시 청산
+NO_POS_STREAK_N = int(os.getenv("NO_POS_STREAK_N", "3")) # NO_POSITION N틱 연속 시 청산
 OPENAI_API_KEY  = require_env("OPENAI_API_KEY")
 BINANCE_API_KEY = require_env("BINANCE_API_KEY")
 BINANCE_SECRET  = require_env("BINANCE_SECRET_KEY")
@@ -92,7 +92,7 @@ if not os.path.exists(DB_FILE) and os.path.exists(LEGACY_DB_FILE):
         DB_FILE = LEGACY_DB_FILE
 
 ROTATE_ON_IDLE = os.getenv("ROTATE_ON_IDLE", "true").lower() == "true"
-ROTATE_IDLE_STREAK_N = int(os.getenv("ROTATE_IDLE_STREAK_N", "3"))
+ROTATE_IDLE_STREAK_N = int(os.getenv("ROTATE_IDLE_STREAK_N", "2"))
 ROTATE_COINS_RAW = os.getenv("ROTATE_COINS", "XRP,ETH,SOL")
 
 

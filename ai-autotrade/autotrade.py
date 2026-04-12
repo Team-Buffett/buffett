@@ -43,7 +43,7 @@ BINANCE_API_KEY = require_env("BINANCE_API_KEY")
 BINANCE_SECRET  = require_env("BINANCE_SECRET_KEY")
 
 # 파라미터 (필요시 .env에서 조정)
-AI_MODEL      = os.getenv("OPENAI_MODEL", "gpt-4.1-nano")
+AI_MODEL      = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 RISK_PCT      = float(os.getenv("RISK_PCT", "0.004"))     # 트레이드당 계좌 리스크 0.4%
 MAX_LEVERAGE  = int(os.getenv("MAX_LEVERAGE", "10"))
 DAILY_MAX_LOSS_USDT = float(os.getenv("DAILY_MAX_LOSS_USDT", "100"))
@@ -56,7 +56,7 @@ LIQ_MIN_DEPTH_USDT = float(os.getenv("LIQ_MIN_DEPTH_USDT", "20000"))  # ETH 기�
 MAX_RISK_USDT = float(os.getenv("MAX_RISK_USDT", "4.0"))              # 1회 트레이드 최대 허용 손실(USDT)
 MIN_RISK_USDT = float(os.getenv("MIN_RISK_USDT", "0.06"))             # 1회 트레이드 최소 위험금액(체결 하한)
 MAX_RISK_PCT_OF_FREE = float(os.getenv("MAX_RISK_PCT_OF_FREE", "0.025")) # 잔고 대비 1회 최대 리스크 비율(2.5%)
-ENABLE_TIME_FILTER = os.getenv("ENABLE_TIME_FILTER", "true").lower() == "true"
+ENABLE_TIME_FILTER = os.getenv("ENABLE_TIME_FILTER", "false").lower() == "true"
 ALLOWED_UTC_HOURS = os.getenv("ALLOWED_UTC_HOURS", "0,1,2,6,7,8,12,13,14,15,16,17,18,19,20,21,22,23")
 MAX_CONSEC_LOSSES = int(os.getenv("MAX_CONSEC_LOSSES", "3"))
 COOLDOWN_SEC_AFTER_LOSS_STREAK = int(os.getenv("COOLDOWN_SEC_AFTER_LOSS_STREAK", "1800"))
@@ -66,8 +66,8 @@ ENABLE_LOSS_HOLD_ON_NO_POS = os.getenv("ENABLE_LOSS_HOLD_ON_NO_POS", "true").low
 LOSS_HOLD_TRIGGER_PCT = float(os.getenv("LOSS_HOLD_TRIGGER_PCT", "0.8"))  # 미실현손실 -0.8% 이하일 때 유예 대상
 LOSS_HOLD_MAX_SEC = int(os.getenv("LOSS_HOLD_MAX_SEC", "900"))            # 최대 유예 15분
 
-TICKER_SEC    = int(os.getenv("TICKER_SEC", "150"))
-POSITION_TICKER_SEC = int(os.getenv("POSITION_TICKER_SEC", "120"))
+TICKER_SEC    = int(os.getenv("TICKER_SEC", "240"))
+POSITION_TICKER_SEC = int(os.getenv("POSITION_TICKER_SEC", "150"))
 HEAVY_SEC     = 15
 ANALYZE_SEC   = int(os.getenv("ANALYZE_SEC", "30"))
 
@@ -135,7 +135,7 @@ def loop_wait_seconds() -> int:
 def idle_no_position_wait_seconds(idle_streak: int) -> int:
     # 무포지션이 길어질수록 호출 빈도를 줄여 API 비용을 절감
     base = max(10, TICKER_SEC)
-    backoff = min(180, max(0, idle_streak) * 20)
+    backoff = min(240, max(0, idle_streak) * 30)
     return base + backoff
 
 def _parse_allowed_hours(raw: str):

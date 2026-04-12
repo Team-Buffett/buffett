@@ -53,9 +53,11 @@ MIN_RR = float(os.getenv("MIN_RR", "1.5"))
 MAX_NOTIONAL_FRAC = float(os.getenv("MAX_NOTIONAL_FRAC", "0.60"))
 LIQ_MAX_SPREAD = float(os.getenv("LIQ_MAX_SPREAD", "0.0010"))         # 0.10%
 LIQ_MIN_DEPTH_USDT = float(os.getenv("LIQ_MIN_DEPTH_USDT", "20000"))  # ETH 기준 최소 호가 유동성(완화)
-MAX_RISK_USDT = float(os.getenv("MAX_RISK_USDT", "4.0"))              # 1회 트레이드 최대 허용 손실(USDT)
+MAX_RISK_USDT = float(os.getenv("MAX_RISK_USDT", "2.5"))              # 1회 트레이드 최대 허용 손실(USDT)
 MIN_RISK_USDT = float(os.getenv("MIN_RISK_USDT", "0.06"))             # 1회 트레이드 최소 위험금액(체결 하한)
-MAX_RISK_PCT_OF_FREE = float(os.getenv("MAX_RISK_PCT_OF_FREE", "0.025")) # 잔고 대비 1회 최대 리스크 비율(2.5%)
+MAX_RISK_PCT_OF_FREE = float(os.getenv("MAX_RISK_PCT_OF_FREE", "0.02")) # 잔고 대비 1회 최대 리스크 비율(2.0%)
+RANGE_BLOCK_ENTRY = os.getenv("RANGE_BLOCK_ENTRY", "true").lower() == "true"
+FLIP_CONFIRM_TICKS = int(os.getenv("FLIP_CONFIRM_TICKS", "2"))
 ENABLE_TIME_FILTER = os.getenv("ENABLE_TIME_FILTER", "false").lower() == "true"
 ALLOWED_UTC_HOURS = os.getenv("ALLOWED_UTC_HOURS", "0,1,2,6,7,8,12,13,14,15,16,17,18,19,20,21,22,23")
 MAX_CONSEC_LOSSES = int(os.getenv("MAX_CONSEC_LOSSES", "3"))
@@ -521,6 +523,12 @@ def build_snapshot():
         "indicator_pack": indicators
     }
 
+def is_range_regime(snapshot: Dict[str, Any]) -> bool:
+    pack = snapshot.get("indicator_pack", {}) or {}
+    r1 = str((pack.get("1m", {}) or {}).get("regime_hint", ""))
+    r3 = str((pack.get("3m", {}) or {}).get("regime_hint", ""))
+    return r1 == "RANGE" and r3 == "RANGE"
+
 def ai_decide(snapshot: Dict[str,Any]) -> Dict[str,Any]:
     try:
         resp = client.chat.completions.create(
@@ -897,6 +905,7 @@ def main():
     no_pos_streak   = 0
     cooldown_until = 0.0
     idle_no_pos_streak = 0
+    flip_signal_streak = 0
     while True:
         try:
             now = time.time()
@@ -960,6 +969,11 @@ def main():
                 "depth_usdt": float(depth_usdt),
             }
             decision = ai_decide(snapshot)
+
+            # RANGE 구간에서는 신규 진입을 기본적으로 차단
+            if RANGE_BLOCK_ENTRY and decision["direction"] in ("LONG", "SHORT") and is_range_regime(snapshot) and not fetch_current_position():
+                decision["direction"] = "NO_POSITION"
+                decision["reasoning"] = f"{decision.get('reasoning','')} [RANGE_BLOCK]"
 
             if time.time() < cooldown_until and decision["direction"] != "NO_POSITION":
                 remaining = int(cooldown_until - time.time())
@@ -1102,6 +1116,7 @@ def main():
 
                 same_dir = (onpos["side"] == "long" and want_long) or (onpos["side"] == "short" and not want_long)
                 if same_dir:
+                    flip_signal_streak = 0
                     # set_margin_and_leverage(decision["recommended_leverage"])  # 필요시
                     ok_protect = place_protective_orders(decision["direction"], onpos["amount"], new_sl_price, new_tp_price)
                     if not ok_protect:
@@ -1111,7 +1126,13 @@ def main():
                     time.sleep(loop_wait_seconds())
                     continue
                 else:
-                    log("보유 중 반대 방향 신호 → FLIP: 평탄화 후 신규 진입")
+                    flip_signal_streak += 1
+                    if flip_signal_streak < max(1, FLIP_CONFIRM_TICKS):
+                        log(f"보유 중 반대 방향 신호 감지({flip_signal_streak}/{FLIP_CONFIRM_TICKS}) → 확인 대기")
+                        time.sleep(loop_wait_seconds())
+                        continue
+                    log("보유 중 반대 방향 신호 확인 완료 → FLIP: 평탄화 후 신규 진입")
+                    flip_signal_streak = 0
                     flatten_position_if_any()
                     for _ in range(5):
                         if not fetch_current_position():
@@ -1154,6 +1175,7 @@ def main():
                 last_entry_side = decision["direction"]
                 no_pos_streak = 0
                 idle_no_pos_streak = 0
+                flip_signal_streak = 0
             else:
                 log("주문 미체결/스킵")
 

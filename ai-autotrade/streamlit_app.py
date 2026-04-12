@@ -192,8 +192,8 @@ def get_db_connection(coin_name: str):
 
 # --- 사이드바 구성 ---
 st.sidebar.title("⚙️ 대시보드 설정")
-auto_refresh = st.sidebar.checkbox("자동 새로고침", value=True)
-refresh_interval_sec = st.sidebar.selectbox("새로고침 주기(초)", [5, 10, 30, 60], index=0)
+auto_refresh = st.sidebar.checkbox("자동 새로고침(대시보드)", value=True)
+refresh_interval_sec = st.sidebar.selectbox("대시보드 새로고침(초)", [5, 10, 30, 60], index=0)
 
 available_coins = get_available_coin_names()
 selected_coin = st.sidebar.selectbox("코인 선택:", available_coins, index=available_coins.index(default_coin) if default_coin in available_coins else 0)
@@ -210,6 +210,21 @@ with admin_nav_cols[1]:
     if st.button("대시보드", use_container_width=True):
         st.session_state["admin_mode"] = False
         st.rerun()
+
+if "admin_auto_refresh" not in st.session_state:
+    st.session_state["admin_auto_refresh"] = False
+
+if st.session_state.get("admin_mode", False):
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 관리자 모드 설정")
+    st.session_state["admin_auto_refresh"] = st.sidebar.checkbox(
+        "자동 새로고침(관리자)", value=st.session_state["admin_auto_refresh"]
+    )
+    admin_refresh_interval_sec = st.sidebar.selectbox(
+        "관리자 새로고침(초)", [15, 30, 60, 120], index=1
+    )
+else:
+    admin_refresh_interval_sec = 30
 
 # 선택된 코인명 전역 설정
 _coinName = selected_coin
@@ -447,8 +462,8 @@ def get_ai_direction_snapshot(ai_df: pd.DataFrame):
 try:
     if st.session_state.get("admin_mode", False):
         admin_page()
-        if auto_refresh:
-            time.sleep(refresh_interval_sec)
+        if st.session_state.get("admin_auto_refresh", False):
+            time.sleep(admin_refresh_interval_sec)
             st.rerun()
         st.stop()
 

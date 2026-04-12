@@ -91,6 +91,28 @@ if not os.path.exists(DB_FILE) and os.path.exists(LEGACY_DB_FILE):
     except Exception:
         DB_FILE = LEGACY_DB_FILE
 
+ROTATE_ON_IDLE = os.getenv("ROTATE_ON_IDLE", "true").lower() == "true"
+ROTATE_IDLE_STREAK_N = int(os.getenv("ROTATE_IDLE_STREAK_N", "3"))
+ROTATE_COINS_RAW = os.getenv("ROTATE_COINS", "XRP,ETH,SOL")
+
+
+def parse_rotation_coins() -> list[str]:
+    coins = []
+    seen = set()
+    for token in (ROTATE_COINS_RAW or "").split(","):
+        coin = token.strip().replace(" ", "").upper()
+        if not coin or coin in seen:
+            continue
+        seen.add(coin)
+        coins.append(coin)
+    if BASE not in seen:
+        coins.insert(0, BASE)
+    return coins
+
+
+ROTATION_COINS = parse_rotation_coins()
+rotation_idx = ROTATION_COINS.index(BASE) if BASE in ROTATION_COINS else 0
+
 # =========================
 # 프롬프트 로드
 # =========================
@@ -102,6 +124,47 @@ else:
 Use 1m/3m/5m momentum. Output JSON with fields: direction, recommended_position_size, recommended_leverage, stop_loss_percentage, take_profit_percentage, reasoning."""
 
 SYSTEM_PROMPT = SYSTEM_PROMPT.replace("DOGE/USDT", f"{BASE}/USDT")
+
+
+def refresh_runtime_for_coin(new_base: str):
+    global BASE, SYMBOL, DB_FILE, LEGACY_DB_FILE, SYSTEM_PROMPT
+    normalized = (new_base or "").strip().replace(" ", "").upper()
+    if not normalized or normalized == BASE:
+        return
+
+    BASE = normalized
+    SYMBOL = f"{BASE}/USDT:USDT"
+    DB_FILE = os.path.join(BASE_DIR, "db", f"{BASE}_trading.db")
+    LEGACY_DB_FILE = os.path.join(BASE_DIR, "db", f"{BASE.lower()}_trading.db")
+    if not os.path.exists(DB_FILE) and os.path.exists(LEGACY_DB_FILE):
+        try:
+            os.replace(LEGACY_DB_FILE, DB_FILE)
+        except Exception:
+            DB_FILE = LEGACY_DB_FILE
+
+    try:
+        with open(COIN_NAME_PATH, "w", encoding="utf-8") as f:
+            f.write(BASE)
+    except Exception as e:
+        log(f"[WARN] coinName.txt 업데이트 실패: {e}")
+
+    sp = read_text(SP_PATH)
+    if sp.strip():
+        SYSTEM_PROMPT = sp.replace("DOGE/USDT", f"{BASE}/USDT")
+
+
+def rotate_to_next_coin() -> bool:
+    global rotation_idx
+    if len(ROTATION_COINS) < 2:
+        return False
+    rotation_idx = (rotation_idx + 1) % len(ROTATION_COINS)
+    prev_base = BASE
+    next_base = ROTATION_COINS[rotation_idx]
+    refresh_runtime_for_coin(next_base)
+    setup_db()
+    ensure_market()
+    log(f"[ROTATE] idle NO_POSITION {ROTATE_IDLE_STREAK_N}회 이상 → {prev_base} -> {next_base} 전환")
+    return True
 
 # =========================
 # 클라이언트/거래소
@@ -1021,6 +1084,16 @@ def main():
                     no_pos_streak = 0
                     idle_no_pos_streak += 1
                     log("AI: NO_POSITION (보유 없음) → 주문만 정리하고 대기")
+
+                    if ROTATE_ON_IDLE and idle_no_pos_streak >= max(1, ROTATE_IDLE_STREAK_N):
+                        switched = rotate_to_next_coin()
+                        if switched:
+                            idle_no_pos_streak = 0
+                            no_pos_streak = 0
+                            flip_signal_streak = 0
+                            last_heavy = 0
+                            log(f"[ROTATE] 현재 심볼: {SYMBOL}")
+
                     wait_sec = idle_no_position_wait_seconds(idle_no_pos_streak)
                     log(f"[COST] 무포지션 연속 {idle_no_pos_streak}회 → 대기 {wait_sec}s")
                     time.sleep(wait_sec)

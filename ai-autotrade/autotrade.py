@@ -72,6 +72,9 @@ TICKER_SEC    = int(os.getenv("TICKER_SEC", "240"))
 POSITION_TICKER_SEC = int(os.getenv("POSITION_TICKER_SEC", "150"))
 HEAVY_SEC     = 15
 ANALYZE_SEC   = int(os.getenv("ANALYZE_SEC", "30"))
+OPENAI_INPUT_COST_PER_1M = float(os.getenv("OPENAI_INPUT_COST_PER_1M", "0"))
+OPENAI_OUTPUT_COST_PER_1M = float(os.getenv("OPENAI_OUTPUT_COST_PER_1M", "0"))
+OPENAI_MONTHLY_BUDGET_USD = float(os.getenv("OPENAI_MONTHLY_BUDGET_USD", "0"))
 
 # 코인명
 COIN_NAME_PATH = os.path.join(BASE_DIR, "txt", "coinName.txt")
@@ -94,6 +97,11 @@ if not os.path.exists(DB_FILE) and os.path.exists(LEGACY_DB_FILE):
 ROTATE_ON_IDLE = os.getenv("ROTATE_ON_IDLE", "true").lower() == "true"
 ROTATE_IDLE_STREAK_N = int(os.getenv("ROTATE_IDLE_STREAK_N", "2"))
 ROTATE_COINS_RAW = os.getenv("ROTATE_COINS", "XRP,ETH,SOL")
+ENABLE_GLOBAL_IDLE_CYCLE_COOLDOWN = os.getenv("ENABLE_GLOBAL_IDLE_CYCLE_COOLDOWN", "true").lower() == "true"
+GLOBAL_IDLE_CYCLE_COOLDOWN_SEC = int(os.getenv("GLOBAL_IDLE_CYCLE_COOLDOWN_SEC", "900"))
+ENABLE_BREAKOUT_WAKEUP = os.getenv("ENABLE_BREAKOUT_WAKEUP", "true").lower() == "true"
+BREAKOUT_LOOKBACK = int(os.getenv("BREAKOUT_LOOKBACK", "20"))
+BREAKOUT_VOL_MULT = float(os.getenv("BREAKOUT_VOL_MULT", "1.8"))
 
 
 def parse_rotation_coins() -> list[str]:
@@ -112,6 +120,11 @@ def parse_rotation_coins() -> list[str]:
 
 ROTATION_COINS = parse_rotation_coins()
 rotation_idx = ROTATION_COINS.index(BASE) if BASE in ROTATION_COINS else 0
+AI_USAGE_TOTAL_IN = 0
+AI_USAGE_TOTAL_OUT = 0
+AI_USAGE_TOTAL_ALL = 0
+AI_USAGE_DAY = datetime.now().strftime("%Y-%m-%d")
+GLOBAL_IDLE_COOLDOWN_UNTIL = 0.0
 
 # =========================
 # 프롬프트 로드
@@ -209,6 +222,45 @@ def now_iso():
 
 def log(msg):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
+
+
+def log_ai_usage(usage):
+    """OpenAI usage를 output.log에 누적 기록한다.
+    NOTE: API에서 정확 잔액은 제공되지 않아 토큰/추정비용만 기록 가능.
+    """
+    global AI_USAGE_TOTAL_IN, AI_USAGE_TOTAL_OUT, AI_USAGE_TOTAL_ALL, AI_USAGE_DAY
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    if today != AI_USAGE_DAY:
+        AI_USAGE_DAY = today
+        AI_USAGE_TOTAL_IN = 0
+        AI_USAGE_TOTAL_OUT = 0
+        AI_USAGE_TOTAL_ALL = 0
+
+    in_tok = int(getattr(usage, "prompt_tokens", 0) or 0)
+    out_tok = int(getattr(usage, "completion_tokens", 0) or 0)
+    all_tok = int(getattr(usage, "total_tokens", (in_tok + out_tok)) or (in_tok + out_tok))
+
+    AI_USAGE_TOTAL_IN += in_tok
+    AI_USAGE_TOTAL_OUT += out_tok
+    AI_USAGE_TOTAL_ALL += all_tok
+
+    msg = (
+        f"[API] OpenAI usage this_call(in={in_tok}, out={out_tok}, total={all_tok}) "
+        f"today(in={AI_USAGE_TOTAL_IN}, out={AI_USAGE_TOTAL_OUT}, total={AI_USAGE_TOTAL_ALL})"
+    )
+
+    if OPENAI_INPUT_COST_PER_1M > 0 or OPENAI_OUTPUT_COST_PER_1M > 0:
+        call_cost = (in_tok / 1_000_000.0) * OPENAI_INPUT_COST_PER_1M + (out_tok / 1_000_000.0) * OPENAI_OUTPUT_COST_PER_1M
+        day_cost = (AI_USAGE_TOTAL_IN / 1_000_000.0) * OPENAI_INPUT_COST_PER_1M + (AI_USAGE_TOTAL_OUT / 1_000_000.0) * OPENAI_OUTPUT_COST_PER_1M
+        msg += f", est_usd(call={call_cost:.6f}, today={day_cost:.4f})"
+        if OPENAI_MONTHLY_BUDGET_USD > 0:
+            remaining = max(0.0, OPENAI_MONTHLY_BUDGET_USD - day_cost)
+            msg += f", est_budget_left={remaining:.4f}/{OPENAI_MONTHLY_BUDGET_USD:.2f}"
+    else:
+        msg += ", est_usd=off(set OPENAI_INPUT_COST_PER_1M/OPENAI_OUTPUT_COST_PER_1M)"
+
+    log(msg)
 
 def loop_wait_seconds() -> int:
     return POSITION_TICKER_SEC if fetch_current_position() else TICKER_SEC
@@ -538,6 +590,33 @@ def fetch_candles(tf: str, limit=120):
     )
     return df
 
+
+def breakout_wakeup_signal(symbol: str) -> bool:
+    """쿨다운 중 재개 트리거용: 직전 구간 고/저 돌파 + 거래량 급증."""
+    if not ENABLE_BREAKOUT_WAKEUP:
+        return False
+    try:
+        limit = max(10, BREAKOUT_LOOKBACK + 2)
+        o = exchange.fetch_ohlcv(symbol, timeframe="1m", limit=limit)
+        if not o or len(o) < (BREAKOUT_LOOKBACK + 2):
+            return False
+        df = pd.DataFrame(o, columns=["ts", "open", "high", "low", "close", "volume"]).astype(
+            {"open": float, "high": float, "low": float, "close": float, "volume": float}
+        )
+        prev = df.iloc[-(BREAKOUT_LOOKBACK + 1):-1]
+        last = df.iloc[-1]
+        prev_high = float(prev["high"].max())
+        prev_low = float(prev["low"].min())
+        avg_vol = float(prev["volume"].mean())
+        last_close = float(last["close"])
+        last_vol = float(last["volume"])
+        vol_ok = avg_vol > 0 and last_vol >= (avg_vol * BREAKOUT_VOL_MULT)
+        break_up = last_close > prev_high
+        break_dn = last_close < prev_low
+        return bool(vol_ok and (break_up or break_dn))
+    except Exception:
+        return False
+
 def compute_indicator_pack(df: pd.DataFrame) -> Dict[str, Any]:
     if df is None or df.empty:
         return {}
@@ -618,6 +697,7 @@ def ai_decide(snapshot: Dict[str,Any]) -> Dict[str,Any]:
                 {"role":"user","content":json.dumps(snapshot, ensure_ascii=False)}
             ],
         )
+        log_ai_usage(resp.usage)
         raw = resp.choices[0].message.content or "{}"
         d = json.loads(raw)
     except Exception as e:
@@ -971,6 +1051,7 @@ def close_if_no_position_update_db():
 # 메인 루프
 # =========================
 def main():
+    global GLOBAL_IDLE_COOLDOWN_UNTIL
     setup_db()
     market = ensure_market()
     log("=== Scalper Safe Bot Started ===")
@@ -986,6 +1067,7 @@ def main():
     cooldown_until = 0.0
     idle_no_pos_streak = 0
     flip_signal_streak = 0
+    idle_cycle_seen_coins = set()
     while True:
         try:
             now = time.time()
@@ -1041,6 +1123,18 @@ def main():
                 log(f"[COOLDOWN] 무포지션 쿨다운 중({remaining}s 남음) → AI 호출 생략, 대기 {wait_sec}s")
                 time.sleep(wait_sec)
                 continue
+
+            # 모든 로테이션 코인이 무포지션으로 한 바퀴 돈 경우 글로벌 쿨다운
+            if ENABLE_GLOBAL_IDLE_CYCLE_COOLDOWN and (time.time() < GLOBAL_IDLE_COOLDOWN_UNTIL) and (not fetch_current_position()):
+                remaining = int(GLOBAL_IDLE_COOLDOWN_UNTIL - time.time())
+                if breakout_wakeup_signal(SYMBOL):
+                    GLOBAL_IDLE_COOLDOWN_UNTIL = 0.0
+                    log(f"[WAKEUP] breakout 감지({SYMBOL}) → 글로벌 무포지션 쿨다운 해제")
+                else:
+                    wait_sec = min(120, max(60, remaining))
+                    log(f"[GLOBAL_COOLDOWN] 전 코인 무포지션 사이클 보호 중({remaining}s 남음) → AI 호출 생략, 대기 {wait_sec}s")
+                    time.sleep(wait_sec)
+                    continue
 
             # === 분석 → 의사결정 (항상 먼저) ===
             snapshot = build_snapshot()
@@ -1102,7 +1196,16 @@ def main():
                     cancel_all_orders_for_symbol()
                     no_pos_streak = 0
                     idle_no_pos_streak += 1
+                    idle_cycle_seen_coins.add(BASE)
                     log("AI: NO_POSITION (보유 없음) → 주문만 정리하고 대기")
+
+                    if ENABLE_GLOBAL_IDLE_CYCLE_COOLDOWN and len(idle_cycle_seen_coins) >= len(ROTATION_COINS):
+                        GLOBAL_IDLE_COOLDOWN_UNTIL = max(
+                            GLOBAL_IDLE_COOLDOWN_UNTIL,
+                            time.time() + max(60, GLOBAL_IDLE_CYCLE_COOLDOWN_SEC)
+                        )
+                        log(f"[GLOBAL_COOLDOWN] 전 코인 무포지션 확인({len(ROTATION_COINS)}개) → {GLOBAL_IDLE_CYCLE_COOLDOWN_SEC}s 보호")
+                        idle_cycle_seen_coins.clear()
 
                     if ROTATE_ON_IDLE and idle_no_pos_streak >= max(1, ROTATE_IDLE_STREAK_N):
                         switched = rotate_to_next_coin()
@@ -1268,6 +1371,7 @@ def main():
                 no_pos_streak = 0
                 idle_no_pos_streak = 0
                 flip_signal_streak = 0
+                idle_cycle_seen_coins.clear()
             else:
                 log("주문 미체결/스킵")
 

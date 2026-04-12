@@ -33,8 +33,8 @@ def get_db_connection(coin_name: str):
 
 # --- 사이드바 구성 ---
 st.sidebar.title("⚙️ 대시보드 설정")
-auto_refresh = st.sidebar.checkbox("자동 새로고침 (30초)", value=True)
-refresh_interval_sec = 30
+auto_refresh = st.sidebar.checkbox("자동 새로고침", value=True)
+refresh_interval_sec = st.sidebar.selectbox("새로고침 주기(초)", [5, 10, 30, 60], index=0)
 
 available_coins = get_available_coin_names()
 selected_coin = st.sidebar.selectbox("코인 선택:", available_coins, index=available_coins.index(default_coin) if default_coin in available_coins else 0)
@@ -47,7 +47,7 @@ st.markdown("""
 <style>
     .header { font-size: 2.5rem; color: #FF9900; text-align: center; margin-bottom: 1.5rem; }
     .metrics-container { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; margin-bottom: 2rem; }
-    .metric-card { background-color: #262730; border-radius: 5px; padding: 1rem; text-align: center; width: calc(25% - 10px); box-sizing: border-box; }
+    .metric-card { background-color: #262730; border-radius: 8px; padding: 1rem; text-align: center; width: calc(20% - 10px); box-sizing: border-box; border: 1px solid #3a3a3a; }
     .metric-title { font-size: 1rem; color: #888888; margin-bottom: 0.5rem; }
     .metric-value { font-size: 1.8rem; font-weight: bold; color: #FFFFFF; }
     .positive { color: #00CC96; }
@@ -240,6 +240,38 @@ def calculate_trading_metrics(trades_df, Coin_price_df=None, time_filter=None, f
         'avg_holding_time': avg_holding_time
     }
 
+
+def get_ai_direction_snapshot(ai_df: pd.DataFrame):
+    if ai_df.empty:
+        return {
+            "latest_direction": "N/A",
+            "latest_time": None,
+            "no_position_streak": 0,
+            "last_20_counts": {"LONG": 0, "SHORT": 0, "NO_POSITION": 0},
+        }
+
+    latest = ai_df.iloc[0]
+    last20 = ai_df.head(20).copy()
+    counts = last20["direction"].value_counts().to_dict()
+
+    streak = 0
+    for d in ai_df["direction"].head(50):
+        if str(d).upper() == "NO_POSITION":
+            streak += 1
+        else:
+            break
+
+    return {
+        "latest_direction": str(latest.get("direction", "N/A")).upper(),
+        "latest_time": latest.get("timestamp"),
+        "no_position_streak": streak,
+        "last_20_counts": {
+            "LONG": int(counts.get("LONG", 0)),
+            "SHORT": int(counts.get("SHORT", 0)),
+            "NO_POSITION": int(counts.get("NO_POSITION", 0)),
+        },
+    }
+
 try:
     # 데이터 로드
     trades_df = get_trades_data(_coinName)
@@ -288,9 +320,59 @@ try:
 
     # 현재 Coin 가격
     current_Coin_price = ai_analysis_df.iloc[0]['current_price'] if not ai_analysis_df.empty else Coin_price_df.iloc[-1]['close']
+    ai_snapshot = get_ai_direction_snapshot(ai_analysis_df)
 
     # 대시보드 메인
     st.markdown(f"<h1 class='header'>{_coinName} Trading Dashboard</h1>", unsafe_allow_html=True)
+
+    # 실행 상태 패널
+    st.markdown("<h2 class='subheader'>Runtime Status</h2>", unsafe_allow_html=True)
+    latest_dir = ai_snapshot["latest_direction"]
+    if latest_dir == "LONG":
+        latest_dir_color = "positive"
+    elif latest_dir == "SHORT":
+        latest_dir_color = "negative"
+    else:
+        latest_dir_color = "neutral"
+
+    status_cols = st.columns(5)
+    with status_cols[0]:
+        st.markdown(f"""
+        <div class="metric-card" style="width: 100%">
+            <div class="metric-title">Active Coin</div>
+            <div class="metric-value">{_coinName}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with status_cols[1]:
+        st.markdown(f"""
+        <div class="metric-card" style="width: 100%">
+            <div class="metric-title">Latest AI Signal</div>
+            <div class="metric-value {latest_dir_color}">{latest_dir}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with status_cols[2]:
+        st.markdown(f"""
+        <div class="metric-card" style="width: 100%">
+            <div class="metric-title">NO_POSITION Streak</div>
+            <div class="metric-value">{ai_snapshot['no_position_streak']}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with status_cols[3]:
+        st.markdown(f"""
+        <div class="metric-card" style="width: 100%">
+            <div class="metric-title">Auto Refresh</div>
+            <div class="metric-value">{refresh_interval_sec}s</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with status_cols[4]:
+        latest_time = ai_snapshot["latest_time"]
+        latest_time_text = latest_time.strftime('%H:%M:%S') if pd.notna(latest_time) else "-"
+        st.markdown(f"""
+        <div class="metric-card" style="width: 100%">
+            <div class="metric-title">Latest AI Time</div>
+            <div class="metric-value">{latest_time_text}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
     # 주요 트레이딩 지표 표시
     st.markdown(f"""
@@ -491,6 +573,22 @@ try:
         else:
             st.info("No trades to display.")
 
+    st.markdown("<h2 class='subheader'>Direction P/L (Closed Trades)</h2>", unsafe_allow_html=True)
+    if not closed_trades.empty:
+        pl_by_dir = closed_trades.groupby("action", as_index=False)["profit_loss"].sum()
+        fig_dir_pl = px.bar(
+            pl_by_dir,
+            x="action",
+            y="profit_loss",
+            color="action",
+            color_discrete_map={"long": "#00CC96", "short": "#EF553B"},
+            title="Net P/L by Direction"
+        )
+        fig_dir_pl.update_layout(height=320, xaxis_title="Direction", yaxis_title="P/L (USDT)")
+        st.plotly_chart(fig_dir_pl, use_container_width=True)
+    else:
+        st.info("No closed trades for direction P/L.")
+
     # 거래 내역
     st.markdown("<h2 class='subheader'>Recent Trades</h2>", unsafe_allow_html=True)
     if not filtered_trades.empty:
@@ -572,6 +670,22 @@ try:
                 st.write(latest_analysis['reasoning'])
     else:
         st.info("No AI analysis data available.")
+
+    st.markdown("<h2 class='subheader'>Recent AI Signals</h2>", unsafe_allow_html=True)
+    if not ai_analysis_df.empty:
+        recent_ai = ai_analysis_df[['timestamp', 'direction', 'current_price', 'recommended_leverage', 'reasoning']].head(15).copy()
+        recent_ai['timestamp'] = recent_ai['timestamp'].dt.strftime('%Y-%m-%d %H:%M:%S')
+        recent_ai['reasoning'] = recent_ai['reasoning'].fillna("").apply(lambda x: (x[:120] + "...") if len(x) > 120 else x)
+        recent_ai = recent_ai.rename(columns={
+            'timestamp': 'Time',
+            'direction': 'Direction',
+            'current_price': 'Price',
+            'recommended_leverage': 'Lev',
+            'reasoning': 'Reasoning (Preview)'
+        })
+        st.dataframe(recent_ai, use_container_width=True, height=360)
+    else:
+        st.info("No AI signals available.")
 
 
     # 추가 섹션: 거래 상세 정보 (Trade Details)

@@ -70,6 +70,14 @@ LOSS_HOLD_TRIGGER_PCT = float(os.getenv("LOSS_HOLD_TRIGGER_PCT", "0.8"))  # 미�
 LOSS_HOLD_MAX_SEC = int(os.getenv("LOSS_HOLD_MAX_SEC", "900"))            # 최대 유예 15분
 BE_TRIGGER_PCT = float(os.getenv("BE_TRIGGER_PCT", "0.25"))               # 수익이 +0.25% 이상이면 BE 잠금 시작
 BE_LOCK_PCT = float(os.getenv("BE_LOCK_PCT", "0.05"))                     # 진입가 대비 +0.05%(숏은 -0.05%)로 SL 잠금
+TURTLE_ENABLE = os.getenv("TURTLE_ENABLE", "true").lower() == "true"
+TURTLE_SIGNAL_TF = os.getenv("TURTLE_SIGNAL_TF", "15m")
+TURTLE_TREND_TF = os.getenv("TURTLE_TREND_TF", "4h")
+TURTLE_ENTRY_N = int(os.getenv("TURTLE_ENTRY_N", "20"))
+TURTLE_EXIT_N = int(os.getenv("TURTLE_EXIT_N", "10"))
+TURTLE_ATR_N = int(os.getenv("TURTLE_ATR_N", "20"))
+TURTLE_ATR_MULT = float(os.getenv("TURTLE_ATR_MULT", "2.0"))
+TURTLE_TREND_EMA = int(os.getenv("TURTLE_TREND_EMA", "200"))
 
 TICKER_SEC    = int(os.getenv("TICKER_SEC", "240"))
 POSITION_TICKER_SEC = int(os.getenv("POSITION_TICKER_SEC", "150"))
@@ -663,6 +671,85 @@ def compute_indicator_pack(df: pd.DataFrame) -> Dict[str, Any]:
         "regime_hint": regime,
     }
 
+
+def compute_turtle_pack() -> Dict[str, Any]:
+    try:
+        sig_limit = max(TURTLE_ENTRY_N + 5, TURTLE_EXIT_N + 5, TURTLE_ATR_N + 5, 80)
+        df = fetch_candles(TURTLE_SIGNAL_TF, limit=sig_limit)
+        tdf = fetch_candles(TURTLE_TREND_TF, limit=max(TURTLE_TREND_EMA + 5, 260))
+        if df is None or len(df) < max(TURTLE_ENTRY_N + 2, TURTLE_EXIT_N + 2, TURTLE_ATR_N + 2):
+            return {"ok": False, "reason": "signal_data_short"}
+        if tdf is None or len(tdf) < TURTLE_TREND_EMA:
+            return {"ok": False, "reason": "trend_data_short"}
+
+        d = df.copy()
+        d["prev_close"] = d["close"].shift(1)
+        prev_entry = d.iloc[-(TURTLE_ENTRY_N + 1):-1]
+        prev_exit = d.iloc[-(TURTLE_EXIT_N + 1):-1]
+        last = d.iloc[-1]
+        prev = d.iloc[-2]
+
+        entry_high = float(prev_entry["high"].max())
+        entry_low = float(prev_entry["low"].min())
+        exit_high = float(prev_exit["high"].max())
+        exit_low = float(prev_exit["low"].min())
+        last_close = float(last["close"])
+        prev_close = float(prev["close"])
+
+        tr = pd.concat([
+            (d["high"] - d["low"]).abs(),
+            (d["high"] - d["close"].shift(1)).abs(),
+            (d["low"] - d["close"].shift(1)).abs(),
+        ], axis=1).max(axis=1)
+        atr = float(tr.rolling(TURTLE_ATR_N).mean().iloc[-1])
+        atr_pct = float(atr / max(1e-9, last_close))
+
+        trend_close = tdf["close"].astype(float)
+        trend_ema = float(trend_close.ewm(span=TURTLE_TREND_EMA, adjust=False).mean().iloc[-1])
+        trend_last = float(trend_close.iloc[-1])
+        trend_up = trend_last > trend_ema
+        trend_down = trend_last < trend_ema
+
+        long_break = (last_close > entry_high) and (prev_close <= entry_high)
+        short_break = (last_close < entry_low) and (prev_close >= entry_low)
+        long_exit_break = (last_close < exit_low) and (prev_close >= exit_low)
+        short_exit_break = (last_close > exit_high) and (prev_close <= exit_high)
+
+        entry_signal = "NONE"
+        if long_break and trend_up:
+            entry_signal = "LONG"
+        elif short_break and trend_down:
+            entry_signal = "SHORT"
+
+        return {
+            "ok": True,
+            "signal_tf": TURTLE_SIGNAL_TF,
+            "trend_tf": TURTLE_TREND_TF,
+            "entry_n": TURTLE_ENTRY_N,
+            "exit_n": TURTLE_EXIT_N,
+            "atr_n": TURTLE_ATR_N,
+            "atr_mult": TURTLE_ATR_MULT,
+            "trend_ema_len": TURTLE_TREND_EMA,
+            "entry_high": entry_high,
+            "entry_low": entry_low,
+            "exit_high": exit_high,
+            "exit_low": exit_low,
+            "last_close": last_close,
+            "atr": atr,
+            "atr_pct": atr_pct,
+            "trend_ema": trend_ema,
+            "trend_last": trend_last,
+            "trend_up": trend_up,
+            "trend_down": trend_down,
+            "long_break": bool(long_break),
+            "short_break": bool(short_break),
+            "long_exit_break": bool(long_exit_break),
+            "short_exit_break": bool(short_exit_break),
+            "entry_signal": entry_signal,
+        }
+    except Exception as e:
+        return {"ok": False, "reason": f"turtle_error:{e}"}
+
 def build_snapshot():
     data = {}
     indicators = {}
@@ -676,12 +763,14 @@ def build_snapshot():
             data[tf] = []
             indicators[tf] = {}
     price = float(exchange.fetch_ticker(SYMBOL)["last"])
+    turtle_pack = compute_turtle_pack() if TURTLE_ENABLE else {"ok": False, "reason": "disabled"}
     return {
         "timestamp": now_iso(),
         "symbol": SYMBOL,
         "current_price": price,
         "timeframes": data,
-        "indicator_pack": indicators
+        "indicator_pack": indicators,
+        "turtle_pack": turtle_pack
     }
 
 def is_range_regime(snapshot: Dict[str, Any]) -> bool:
@@ -689,6 +778,52 @@ def is_range_regime(snapshot: Dict[str, Any]) -> bool:
     r1 = str((pack.get("1m", {}) or {}).get("regime_hint", ""))
     r3 = str((pack.get("3m", {}) or {}).get("regime_hint", ""))
     return r1 == "RANGE" and r3 == "RANGE"
+
+
+def apply_turtle_entry_override(snapshot: Dict[str, Any], decision: Dict[str, Any]) -> Dict[str, Any]:
+    """터틀 20일 돌파 + 200EMA 추세필터 진입 신호를 우선 적용."""
+    if not TURTLE_ENABLE:
+        return decision
+    tp = snapshot.get("turtle_pack", {}) or {}
+    if not tp.get("ok", False):
+        return decision
+    sig = str(tp.get("entry_signal", "NONE")).upper()
+    if sig not in ("LONG", "SHORT"):
+        return decision
+
+    atr_pct = float(tp.get("atr_pct") or 0.0)
+    if atr_pct <= 0:
+        return decision
+
+    # 터틀 리스크: SL=2*ATR, TP는 RR 기준으로 자동 산출
+    sl_pct = clamp(atr_pct * TURTLE_ATR_MULT, 0.0015, 0.03)
+    rr_floor = MIN_RR_SHORT if sig == "SHORT" else MIN_RR
+    tp_pct = clamp(sl_pct * max(rr_floor, 1.0), 0.003, 0.2)
+    lev = int(clamp(decision.get("recommended_leverage", 4), 1, MAX_LEVERAGE))
+
+    return {
+        "direction": sig,
+        "recommended_position_size": 1.0 if sig == "LONG" else 0.9,
+        "recommended_leverage": lev,
+        "stop_loss_percentage": sl_pct,
+        "take_profit_percentage": tp_pct,
+        "reasoning": f"{decision.get('reasoning','')} [TURTLE_ENTRY_OVERRIDE:{sig}]",
+    }
+
+
+def turtle_exit_hit(snapshot: Dict[str, Any], onpos: Dict[str, Any]) -> bool:
+    """터틀 10일 채널 청산 조건 충족 여부."""
+    if not TURTLE_ENABLE or not onpos:
+        return False
+    tp = snapshot.get("turtle_pack", {}) or {}
+    if not tp.get("ok", False):
+        return False
+    side = str(onpos.get("side", "")).lower()
+    if side == "long":
+        return bool(tp.get("long_exit_break", False))
+    if side == "short":
+        return bool(tp.get("short_exit_break", False))
+    return False
 
 def ai_decide(snapshot: Dict[str,Any]) -> Dict[str,Any]:
     try:
@@ -1186,6 +1321,7 @@ def main():
                 "depth_usdt": float(depth_usdt),
             }
             decision = ai_decide(snapshot)
+            decision = apply_turtle_entry_override(snapshot, decision)
             log(f"[SIGNAL] coin={BASE}, symbol={SYMBOL}, direction={decision.get('direction', 'NO_POSITION')}")
 
             # RANGE 구간에서는 신규 진입을 기본적으로 차단
@@ -1233,6 +1369,15 @@ def main():
             # === NO_POSITION: 전량 취소/평탄화 후 대기 ===
             if decision["direction"] == "NO_POSITION":
                 onpos = fetch_current_position()
+
+                # 터틀 청산 조건(10일 채널 이탈) 충족 시 NO_POSITION 카운트 기다리지 않고 즉시 청산
+                if onpos and turtle_exit_hit(snapshot, onpos):
+                    log("[TURTLE_EXIT] 10일 채널 청산 조건 충족 → 즉시 평탄화")
+                    cancel_all_orders_for_symbol()
+                    flatten_position_if_any()
+                    no_pos_streak = 0
+                    time.sleep(ANALYZE_SEC)
+                    continue
 
                 if not onpos:
                     cancel_all_orders_for_symbol()

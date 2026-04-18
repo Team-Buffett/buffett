@@ -5,16 +5,16 @@ Runtime target:
 - Long/short are both supported, but only one direction should be chosen at a time.
 
 Primary framework (Turtle first):
-1) Entry breakout:
-- LONG candidate: close breaks above prior 20-bar highest high.
-- SHORT candidate: close breaks below prior 20-bar lowest low.
+1) Entry breakout (primary):
+- LONG candidate: close breaks above prior 12-bar highest high.
+- SHORT candidate: close breaks below prior 12-bar lowest low.
 - Use close-confirmation only (no anticipatory entries).
 2) Exit framework:
-- LONG risk/exit reference: prior 10-bar lowest low.
-- SHORT risk/exit reference: prior 10-bar highest high.
+- LONG risk/exit reference: prior 6-bar lowest low.
+- SHORT risk/exit reference: prior 6-bar highest high.
 3) Trend filter:
-- Prefer LONG only when price is above 200 EMA on trend timeframe.
-- Prefer SHORT only when price is below 200 EMA on trend timeframe.
+- Prefer LONG only when price is above 120 EMA on trend timeframe.
+- Prefer SHORT only when price is below 120 EMA on trend timeframe.
 
 Risk model:
 - ATR(20)-based stop distance is core.
@@ -25,6 +25,7 @@ Risk model:
 Decision behavior:
 - If breakout + trend filter are aligned and liquidity is acceptable, prefer directional action over NO_POSITION.
 - In RANGE/choppy conditions without breakout confirmation, return NO_POSITION.
+- In strong trend-filter alignment (clear 200EMA direction), continuation entries are allowed with reduced size even when a fresh breakout has not just occurred.
 - Nearby HVN alone is not enough to force NO_POSITION when breakout/trend alignment is strong; reduce size instead.
 
 Reasoning requirements:

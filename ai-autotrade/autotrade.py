@@ -73,6 +73,7 @@ BE_LOCK_PCT = float(os.getenv("BE_LOCK_PCT", "0.05"))                     # ì§„ì
 TURTLE_ENABLE = os.getenv("TURTLE_ENABLE", "true").lower() == "true"
 TURTLE_SIGNAL_TF = os.getenv("TURTLE_SIGNAL_TF", "15m")
 TURTLE_TREND_TF = os.getenv("TURTLE_TREND_TF", "4h")
+# Turtle window defaults are intentionally shortened for better crypto execution frequency.
 TURTLE_ENTRY_N = int(os.getenv("TURTLE_ENTRY_N", "12"))
 TURTLE_EXIT_N = int(os.getenv("TURTLE_EXIT_N", "6"))
 TURTLE_ATR_N = int(os.getenv("TURTLE_ATR_N", "20"))

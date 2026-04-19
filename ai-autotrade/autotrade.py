@@ -37,6 +37,7 @@ def require_env(name: str) -> str:
     return v
 
 MIN_HOLD_SEC    = int(os.getenv("MIN_HOLD_SEC", "60"))   # 최소 보유
+ENTRY_FREEZE_SEC = int(os.getenv("ENTRY_FREEZE_SEC", "900"))  # 진입 직후 AI 재판단 동결(초)
 NO_POS_STREAK_N = int(os.getenv("NO_POS_STREAK_N", "2")) # NO_POSITION N틱 연속 시 청산
 OPENAI_API_KEY  = require_env("OPENAI_API_KEY")
 BINANCE_API_KEY = require_env("BINANCE_API_KEY")
@@ -1316,6 +1317,15 @@ def main():
             liq_ok, spread, depth_usdt, best_bid = liquidity_ok(SYMBOL, max_spread=LIQ_MAX_SPREAD, min_depth_usdt=LIQ_MIN_DEPTH_USDT)
             log(f"[COIN] active={BASE}, symbol={SYMBOL}")
             log(f"OB check → ok={liq_ok}, spread={spread:.4%}, depth≈{int(depth_usdt)} USDT")
+
+            # 진입 직후 AI 재판단 동결: 노이즈성 즉시 반전 신호를 무시하고 포지션을 조건 기반으로 유지
+            if fetch_current_position() and last_entry_time > 0:
+                age_since_entry = time.time() - last_entry_time
+                if age_since_entry < max(0, ENTRY_FREEZE_SEC):
+                    remain = int(max(0, ENTRY_FREEZE_SEC - age_since_entry))
+                    log(f"[ENTRY_FREEZE] 진입 직후 동결 중({remain}s 남음) → AI 재판단 생략")
+                    time.sleep(loop_wait_seconds())
+                    continue
 
             # 유동성 미달 + 무포지션이면 AI 호출을 생략해 비용/노이즈를 줄임
             if (not liq_ok) and (not fetch_current_position()):
